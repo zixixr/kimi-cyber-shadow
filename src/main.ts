@@ -5,6 +5,8 @@
 // 控制源：默认摄像头（MediaPipe）；?debug=mouse 强制鼠标调试源；
 // 摄像头/模型加载失败优雅降级鼠标源并顶部提示（无摄像头也能开发）。
 // ?debug=calib：姿势标定模式（←/→ 切预设 FK 姿势，肉眼核对朝向符号，文档 6.6）。
+// 按 t：拖点标定模式（文档第 8 章）——画面定格成标定摆位（西游=悟空持棒定势+红孩儿持续
+// 喷火，水浒=主角持哨棒定势），手势/战斗暂停；拖 🔥✊👤💪🦵 改参数实时生效、存 localStorage。
 // 主循环：手信号 →（棒断降级改写）→ 导演 → Puppet 公共 API → 玩法判定 → 投影 → 渲染。
 
 import * as THREE from 'three';
@@ -26,6 +28,8 @@ import { FireSpear } from './stage/spear';
 import { SomersaultCloud } from './stage/cloud';
 import { CalibMode } from './ui/calib';
 import { CheatSheet } from './ui/cheatsheet';
+import { Tuner } from './ui/tuner';
+import { loadCalib } from './ui/calibValues';
 
 const PARAMS = new URLSearchParams(location.search);
 const DEBUG = PARAMS.get('debug');
@@ -144,6 +148,7 @@ async function main() {
   let cloud: SomersaultCloud | null = null;
   let fire: FireBreath | null = null;
   let xiyou: Xiyou | null = null;
+  let tuner: Tuner | null = null; // 拖点标定（场景系统就位后创建；标定中 r = 重置标定值而非重开）
   const guardMats = [...puppet.leather];
 
   if (SCENE === 'xiyou') {
@@ -171,9 +176,9 @@ async function main() {
       fire = null;
       xiyou = null;
     }
-    // r = 重开一局：红孩儿满血回场、演出/判定清零
+    // r = 重开一局：红孩儿满血回场、演出/判定清零（标定模式下 r 让位给标定值重置）
     addEventListener('keydown', (e) => {
-      if (e.key !== 'r' || !xiyou) return;
+      if (e.key !== 'r' || !xiyou || tuner?.visible) return;
       xiyou.reset();
       sfx.play('gong', { volume: 0.8, rate: 1.2 });
     });
@@ -198,9 +203,9 @@ async function main() {
     if (tree) guardMats.push(...tree.leather);
     guardMats.push(...staff.leather);
 
-    // r = 重开一局：老虎复活、枯树立回、哨棒修好、玩法链复位
+    // r = 重开一局：老虎复活、枯树立回、哨棒修好、玩法链复位（标定模式下 r 让位给标定值重置）
     addEventListener('keydown', (e) => {
-      if (e.key !== 'r' || !battle) return;
+      if (e.key !== 'r' || !battle || tuner?.visible) return;
       tiger?.revive();
       tree?.reset();
       staff?.repair();
@@ -220,12 +225,135 @@ async function main() {
   const headW = new THREE.Vector3();
   const firePos = new THREE.Vector3();
 
+  // ---------- 拖点标定（t 键，文档第 8 章）：数值中心 + 拖点器 + 定格摆位 ----------
+  const calib = loadCalib(); // 标定单例：Tuner 拖动改写，本循环每帧读（实时生效）
+  /** 喷火角色（西游=红孩儿；水浒无喷火，🔥 点不显示，👤 回落到主角） */
+  const firePuppet = SCENE === 'xiyou' && foe ? foe : puppet;
+  /** 当前喷火朝向（正常运行每帧更新；定格时固定为 foeFreeze.facing） */
+  let fireFacing: 1 | -1 = -1;
+  tuner = new Tuner({
+    camera,
+    showMouth: SCENE === 'xiyou' && !!fire,
+    headWorld: (out) => {
+      firePuppet.getJointWorld('head', out);
+      return fireFacing;
+    },
+    staffLine: (o, d) => {
+      // 棒线 = 前手关节原点 + 棒杆向下方向（金箍棒/哨棒同挂 joint_hand_f，约定一致）
+      const onStage = SCENE === 'xiyou' ? (goldStaff?.onStage ?? false) : (staff?.onStage ?? false);
+      const handJ = puppet.group.getObjectByName('joint_hand_f');
+      if (!onStage || !handJ) return false;
+      handJ.getWorldPosition(o);
+      d.set(0, -1, 0).applyQuaternion(handJ.getWorldQuaternion(new THREE.Quaternion())).normalize();
+      return true;
+    },
+    headDot: (out) => firePuppet.getJointWorld('head', out),
+    dragHead: (w) => {
+      calib.headOff = firePuppet.headOffsetFromWorld(w);
+    },
+    armTip: (out) => puppet.getJointWorld('hand_f', out),
+    dragArm: (w) => {
+      const a = new THREE.Vector3();
+      if (!puppet.getJointWorld('upper_arm_f', a)) return;
+      calib.armScale = Math.min(1.25, Math.max(0.6, a.distanceTo(w) / puppet.restArmReach));
+    },
+    legTip: (out) => {
+      if (!puppet.getJointWorld('leg_f', out)) return false;
+      out.y -= puppet.legLength; // 脚底 = 髋 − 当前腿长（定格双腿站直）
+      return true;
+    },
+    dragLeg: (w) => {
+      const a = new THREE.Vector3();
+      if (!puppet.getJointWorld('leg_f', a)) return;
+      calib.legScale = Math.min(1.4, Math.max(0.8, (a.y - w.y) / puppet.restLegLen));
+    },
+  });
+  /** 标定比例（👤💪🦵）常驻生效：拖一次、关掉标定继续看效果（主角 + 红孩儿同套铆位同比例） */
+  const applyProportions = (): void => {
+    const v = { headOff: calib.headOff, arm: calib.armScale, leg: calib.legScale };
+    puppet.setProportions(v);
+    foe?.setProportions(v);
+  };
+  // 定格摆位（静止画面才好拖）：主角持棒定势 + 双腿站直（🦵 标定要脚底正在髋下）；
+  // 前手 u=115 e=12 是 goldenstaff.test 同款标定姿势（臂近伸直，💪 标定肩手距≈臂展）。
+  const heroFreeze: PuppetControl = {
+    active: true,
+    state: 'staff',
+    gesture: 'sword',
+    facing: 1,
+    rootX: 0.2,
+    rootY: 0.95, // BASE_Y（director 内部常量，复制约定同 battle/xiyou）
+    depth: 0.15,
+    lean: 0,
+    frontFK: { u: 115, e: 12 },
+    rearFK: null, // 后手走 IK：西游由 solveRearGrip 解到标定握点；水浒垂放
+    frontTarget: { x: 0.03, y: -0.15 },
+    rearTarget: { x: 0.03, y: -0.14 },
+    legFront: 0,
+    legRear: 0,
+    moving: false,
+  };
+  // 红孩儿定格喷火：仰头喷火姿势（xiyou.ts 喷火覆盖层同款），面向悟空持续喷
+  const foeFreeze: PuppetControl = {
+    active: true,
+    state: 'idle',
+    gesture: 'open',
+    facing: -1,
+    rootX: -0.25,
+    rootY: 0.95,
+    depth: 0.15,
+    lean: 0.34,
+    frontFK: { u: 18, e: 25 },
+    rearFK: { u: -55, e: 30 },
+    frontTarget: { x: 0.03, y: -0.15 },
+    rearTarget: { x: 0.03, y: -0.14 },
+    legFront: 0,
+    legRear: 0,
+    moving: false,
+  };
+
   const clock = new THREE.Clock();
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
 
     theater.update(dt, t);
+    applyProportions(); // 👤💪🦵 标定比例常驻生效（含正常运行）
+
+    // ---------- 拖点标定定格（t 键）：手势/战斗全部暂停，摆位静止好拖 ----------
+    if (tuner?.visible) {
+      source.read(); // 丢弃手势帧：防关闭标定后信号积压、影人瞬移
+      applyControl(puppet, heroFreeze);
+      puppet.update(dt);
+      if (SCENE === 'xiyou' && foe && goldStaff && spear && cloud && fire) {
+        // 悟空持棒定势：后手 IK 解到标定握点（✊ 拖动实时可见）
+        goldStaff.setHeld(true);
+        goldStaff.update(dt);
+        goldStaff.solveRearGrip(puppet, calib.grip);
+        spear.setHeld(false); // 收枪，不干扰 🔥 标定
+        spear.update(dt, t);
+        // 红孩儿定格持续喷火：喷口 = 头关节 + 标定嘴部偏移（🔥 拖动实时可见）
+        applyControl(foe, foeFreeze);
+        foe.update(dt);
+        fireFacing = foeFreeze.facing;
+        if (foe.getJointWorld('head', headW)) {
+          const o = fireOrigin(headW, fireFacing, calib.mouth);
+          firePos.set(o.x, o.y, o.z);
+          fire.emit(firePos, facingDirX(fireFacing));
+        }
+        fire.update(dt);
+        cloud.update(null);
+      } else if (staff) {
+        // 水浒：主角持哨棒定势（棒已断则无棒，✊ 点自动隐藏）
+        staff.setHeld(!battle?.staffBroken);
+        staff.update(dt);
+      }
+      tuner.update();
+      const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
+      projection.update(renderer, scene, depthRatio, projectionHooks);
+      renderer.render(scene, camera);
+      return;
+    }
 
     // 手信号 →（棒断后剑指降级拳脚）→ 导演 → 主角影人
     let signals = source.read();
@@ -245,19 +373,22 @@ async function main() {
 
     // ---------- 西游玩法：金箍棒 / 双手握棒 / 火尖枪 / 筋斗云 / 三昧真火 ----------
     if (xf && foe) {
-      // 金箍棒：剑指持棒；握棒拍后手 IK 解到棒线（前臂 FK 定格后，场景图矩阵 worldToLocal）
+      // 金箍棒：剑指持棒；握棒拍后手 IK 解到棒线（前臂 FK 定格后，场景图矩阵 worldToLocal）；
+      // 握距读标定单例（✊ 拖点实时覆盖 GRIP_DIST 默认值）
       goldStaff!.setHeld(xf.staffHeld);
       goldStaff!.update(dt);
-      if (xf.grip) goldStaff!.solveRearGrip(puppet);
+      if (xf.grip) goldStaff!.solveRearGrip(puppet, calib.grip);
       // 火尖枪：红孩儿剑指持枪
       spear!.setHeld(xf.spearHeld);
       spear!.update(dt, t);
       // 红孩儿本体（第二只手 / AI 控制量）
       applyControl(foe, xf.foe);
       foe.update(dt);
-      // 三昧真火：嘴部喷口持续喷（第二只手张开 / AI 喷火拍）
+      // 三昧真火：嘴部喷口持续喷（第二只手张开 / AI 喷火拍）；
+      // 嘴部偏移读标定单例（🔥 拖点实时覆盖 MOUTH_OFF 默认值）
+      fireFacing = xf.fireFacing;
       if (xf.fireActive && foe.getJointWorld('head', headW)) {
-        const o = fireOrigin(headW, xf.fireFacing);
+        const o = fireOrigin(headW, xf.fireFacing, calib.mouth);
         firePos.set(o.x, o.y, o.z);
         fire!.emit(firePos, facingDirX(xf.fireFacing));
       }

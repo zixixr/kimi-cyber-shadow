@@ -10,6 +10,9 @@
 //  - art 借稿件（前手复用后手画稿）；flipX 镜像（前手不镜像、后手镜像调转虎口）。
 // 姿势约定（文档 6.5）：预设姿势一律 FK（u=抬臂角、e=肘向身后折弯角，应用时取负，
 // 平滑插值 dt×14）；IK 只用于「指向」，选解规则「肘永远朝身后」+ 环带钳制 + 迟滞（见 ik.ts）。
+// 比例标定（文档第 8 章拖点标定，setProportions）：头关节偏移（插领深度）+ 臂/腿关节树
+// 整体缩放（joint.scale.setScalar）；臂缩放同步 IK 段长与 armReach，腿缩放由 applyTransform
+// 把 root 上移补偿保持贴地；挂在手关节上的棒/枪由道具侧按 1/armScale 反向缩放。
 
 import * as THREE from 'three';
 import { chooseElbowSign, solveTwoBone } from './ik';
@@ -102,6 +105,13 @@ export class Puppet {
   private prevPosX = 0;
   private prevVelX = 0;
 
+  // ---- 比例标定状态（文档第 8 章拖点标定）----
+  private prop = { headOffX: 0, headOffY: 0, arm: 1, leg: 1 };
+  /** 头关节装配基准位置（父件局部系），👤 偏移量的零点 */
+  private headBase: THREE.Vector3 | null = null;
+  /** 静置腿长（米）：由 leg_f 网格包围盒量得（同 cloud.ts 的量法），root 贴地补偿用 */
+  private legLen = 0.234;
+
   /**
    * @param defs     pivots.json 内容
    * @param parts    geometry.json 的 parts 表
@@ -165,6 +175,20 @@ export class Puppet {
     this.armLen.upper = this.boneLen('upper_arm_f', 'lower_arm_f');
     this.armLen.lower = this.boneLen('lower_arm_f', 'hand_f');
 
+    // 4) 标定基准：头关节装配位置 + 静置腿长（腿网格包围盒最低点，关节局部系）
+    const headJ = this.joints.get('head');
+    if (headJ) this.headBase = headJ.position.clone();
+    const legJ = this.joints.get('leg_f');
+    const legMesh = legJ?.children.find((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh === true);
+    if (legMesh) {
+      legMesh.geometry.computeBoundingBox();
+      const bb = legMesh.geometry.boundingBox;
+      if (bb) {
+        const footY = bb.min.y * legMesh.scale.y + legMesh.position.y;
+        if (footY < -0.1) this.legLen = -footY;
+      }
+    }
+
     // 影人专用层：主相机与灯位相机都看 layer 1（文档第 5 章分层）
     this.group.traverse((o) => o.layers.set(1));
     this.applyTransform();
@@ -223,9 +247,60 @@ export class Puppet {
     this.armIK[arm] = { x: target.x, y: target.y };
   }
 
-  /** 臂展（米）：大臂 + 小臂骨骼长度（前后臂同长） */
+  /** 臂展（米）：大臂 + 小臂骨骼长度 × 臂长缩放（前后臂同长；IK 射程/导演指向基准） */
   get armReach(): number {
+    return (this.armLen.upper + this.armLen.lower) * this.prop.arm;
+  }
+
+  // ---------- 公共 API：比例标定（文档第 8 章拖点标定）----------
+
+  /** 静置臂展（未缩放，米）：拖 💪 时把肩手距离换算成缩放比 */
+  get restArmReach(): number {
     return this.armLen.upper + this.armLen.lower;
+  }
+
+  /** 静置腿长（未缩放，米）：拖 🦵 时把髋脚距离换算成缩放比 */
+  get restLegLen(): number {
+    return this.legLen;
+  }
+
+  /** 当前腿长（米，静置腿长 × 腿缩放）：🦵 拖点跟随脚底用 */
+  get legLength(): number {
+    return this.legLen * this.prop.leg;
+  }
+
+  /** 当前臂长缩放比：挂在手关节上的棒/枪按 1/armScale 反向缩放，避免跟着臂长变 */
+  get armScale(): number {
+    return this.prop.arm;
+  }
+
+  /**
+   * 比例标定：头偏移（米，父件局部系）+ 臂/腿关节树整体缩放（joint.scale.setScalar）。
+   * 臂缩放经 prop.arm 同步 IK 段长（solveArm）与 armReach；腿缩放在 applyTransform
+   * 把 root 上移 (leg−1)×legLen 补偿保持贴地。每帧调用冪等，可直接跟标定单例。
+   */
+  setProportions(v: { headOff: { x: number; y: number }; arm: number; leg: number }): void {
+    this.prop.headOffX = v.headOff.x;
+    this.prop.headOffY = v.headOff.y;
+    this.prop.arm = v.arm;
+    this.prop.leg = v.leg;
+    const hj = this.joints.get('head');
+    if (hj && this.headBase) {
+      hj.position.set(this.headBase.x + v.headOff.x, this.headBase.y + v.headOff.y, this.headBase.z);
+    }
+    for (const n of ['upper_arm_f', 'upper_arm_b']) this.joints.get(n)?.scale.setScalar(v.arm);
+    for (const n of ['leg_f', 'leg_b']) this.joints.get(n)?.scale.setScalar(v.leg);
+  }
+
+  /**
+   * 世界点 → 头部偏移量（拖 👤 用）：投到头关节父件局部系减装配基准，
+   * 场景图矩阵天然处理转身镜像，不手推符号。
+   */
+  headOffsetFromWorld(w: THREE.Vector3): { x: number; y: number } {
+    const hj = this.joints.get('head');
+    if (!hj?.parent || !this.headBase) return { x: this.prop.headOffX, y: this.prop.headOffY };
+    const l = hj.parent.worldToLocal(w.clone());
+    return { x: l.x - this.headBase.x, y: l.y - this.headBase.y };
   }
 
   // ---------- 公共 API：走位 / 身段 ----------
@@ -317,7 +392,8 @@ export class Puppet {
 
   private applyTransform(): void {
     // 进深映射到灯幕之间：贴幕 0.05m ↔ 近灯 0.55m（灯在幕后 0.85m）
-    this.group.position.set(this.posX, this.posY, 0.05 + this.depth * 0.5);
+    // 腿长缩放补偿：腿加长时 root 上移 (leg−1)×legLen，脚底保持贴地（文档第 8 章）
+    this.group.position.set(this.posX, this.posY + (this.prop.leg - 1) * this.legLen, 0.05 + this.depth * 0.5);
   }
 
   /** 由 a、b 两件的铆点关系估算骨骼长度（米） */
@@ -387,14 +463,15 @@ export class Puppet {
   /**
    * IK 求解（指向用）：目标在影人局部系（肩为原点，y 向上，+x = 身后）。
    * 求解器工作于 y 向下屏幕系：目标 y 取反送入，返回角再取反映回。
+   * 段长乘臂长缩放 prop.arm：臂关节树被 setScalar 后世界臂展同步变，IK 用缩放后段长解。
    */
   private solveArm(arm: ArmSide): void {
     const { upper, lower } = ARM_JOINTS[arm];
     const uj = this.joints.get(upper);
     const lj = this.joints.get(lower);
     if (!uj || !lj) return;
-    const L1 = this.armLen.upper;
-    const L2 = this.armLen.lower;
+    const L1 = this.armLen.upper * this.prop.arm;
+    const L2 = this.armLen.lower * this.prop.arm;
     const t = { x: this.armIK[arm].x, y: -this.armIK[arm].y };
 
     // 「肘永远朝身后」选解 + 迟滞；环带钳制在求解器内部完成

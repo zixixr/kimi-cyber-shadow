@@ -48,9 +48,16 @@ export function facingDirX(facing: 1 | -1): 1 | -1 {
   return facing === 1 ? -1 : 1;
 }
 
-/** 三昧真火喷口世界坐标：头关节（颈部铆点）+ 面向前移 MOUTH_OFF.x + 上移 MOUTH_OFF.y */
-export function fireOrigin(head: { x: number; y: number; z: number }, facing: 1 | -1): { x: number; y: number; z: number } {
-  return { x: head.x + facingDirX(facing) * MOUTH_OFF.x, y: head.y + MOUTH_OFF.y, z: head.z };
+/**
+ * 三昧真火喷口世界坐标：头关节（颈部铆点）+ 面向前移 mouth.x + 上移 mouth.y。
+ * mouth 默认 MOUTH_OFF（固化常量）；拖点标定时 main 传入标定单例的 mouth 实时覆盖（文档第 8 章）。
+ */
+export function fireOrigin(
+  head: { x: number; y: number; z: number },
+  facing: 1 | -1,
+  mouth: { x: number; y: number } = MOUTH_OFF,
+): { x: number; y: number; z: number } {
+  return { x: head.x + facingDirX(facing) * mouth.x, y: head.y + mouth.y, z: head.z };
 }
 
 /** 火舌是否命中悟空：嘴前 FIRE_NEAR..FIRE_FAR 条带内；跳起（筋斗云，根抬高）躲过 */

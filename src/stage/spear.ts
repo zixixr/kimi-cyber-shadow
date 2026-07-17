@@ -19,6 +19,8 @@ export class FireSpear {
   private flame: THREE.Mesh; // 枪头小火舌
   private flameMat: THREE.MeshBasicMaterial;
   private heldTarget = 0;
+  private heldP = 0.001; // 入场进度（与臂缩放补偿解耦，EMA 向 heldTarget 收敛）
+  private puppet: Puppet | null = null; // attach 后持有：读臂长缩放做反向补偿
 
   constructor() {
     const shaftMat = new THREE.MeshPhysicalMaterial({
@@ -67,6 +69,7 @@ export class FireSpear {
     const hand = puppet.group.getObjectByName('joint_hand_f');
     if (!hand) throw new Error('火尖枪挂载失败：红孩儿缺少 joint_hand_f 关节');
     hand.add(this.group);
+    this.puppet = puppet;
   }
 
   /** 剑指持枪 / 收枪（平滑缩放入场） */
@@ -75,11 +78,11 @@ export class FireSpear {
   }
 
   update(dt: number, t: number): void {
-    // 平滑缩放入场/收枪
-    const cur = this.group.scale.y;
-    const next = cur + (Math.max(0.001, this.heldTarget) - cur) * Math.min(1, dt * 10);
-    this.group.scale.set(1, next, 1);
-    this.group.visible = next > 0.02;
+    // 平滑缩放入场/收枪；臂长标定缩放手关节时按 1/armScale 反向缩放（文档第 8 章）
+    const inv = 1 / (this.puppet?.armScale ?? 1);
+    this.heldP += (Math.max(0.001, this.heldTarget) - this.heldP) * Math.min(1, dt * 10);
+    this.group.scale.set(inv, this.heldP * inv, inv);
+    this.group.visible = this.heldP > 0.02;
     // 火舌闪烁：双频正弦叠加，像喘动的火苗
     this.flame.scale.set(1, 1 + 0.25 * Math.sin(t * 21) + 0.12 * Math.sin(t * 33 + 1), 1);
     this.flameMat.opacity = 0.55 + 0.25 * Math.sin(t * 27 + 0.5);

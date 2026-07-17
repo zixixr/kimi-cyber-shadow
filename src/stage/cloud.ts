@@ -61,9 +61,10 @@ export class SomersaultCloud {
    * @param p 跳跃进度 0→1（由玩法层按导演 jump 状态计时）；null = 不在跳跃，云隐藏
    */
   update(p: number | null): void {
-    // 动态贴脚：云高 = 髋 y − cos(腿摆角) × 当前腿长（跳跃蜷腿时脚抬高，云跟着贴上去）
+    // 动态贴脚：云高 = 髋 y − cos(腿摆角) × 当前腿长（跳跃蜷腿时脚抬高，云跟着贴上去）；
+    // 腿长 = 装配量得静置腿长 × 腿关节当前缩放（拖点标定 🦵 改腿长后依然贴脚，文档第 7/8 章）
     if (this.legJ) {
-      const drop = Math.cos(this.legJ.rotation.z) * this.legLen;
+      const drop = Math.cos(this.legJ.rotation.z) * this.legLen * this.legJ.scale.y;
       this.cloud.position.y = this.legJ.position.y - drop - 0.015;
     }
     const sc = p == null ? 0 : Math.sin(Math.PI * Math.min(1, p)) * 1.1; // 跳跃中段云最大

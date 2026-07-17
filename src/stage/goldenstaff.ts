@@ -13,7 +13,7 @@ const LEN = 0.46; // 棒长（米，同哨棒）
 const GRIP_Y = -0.08; // 握持点偏上：棒心在手关节局部 y=-0.08
 const Z_OFF = 0.003; // 错层：棒身在手前
 const TRANSMISSION = 0.72; // 皮革透光率（与影人一致）
-export const GRIP_DIST = 0.057; // 后手握点距前手沿棒距离（参考实现拖点标定值）
+export const GRIP_DIST = 0.057; // 后手握点距前手沿棒距离（拖点标定固化值；calibValues 默认值引用本常量）
 const GRIP_MIN = -0.06; // 回退下限：最多退到前手上方 6cm
 const GRIP_STEP = 0.01; // 回退步长
 
@@ -35,6 +35,8 @@ export class GoldenStaff {
 
   private group = new THREE.Group(); // 棒体（轴 + 两端金箍），挂前手关节
   private heldTarget = 0; // 1=手持显示（平滑缩放入场）
+  private enterP = 0.001; // 入场进度（与臂缩放补偿解耦，EMA 向 heldTarget 收敛）
+  private puppet: Puppet | null = null; // attach 后持有：读臂长缩放做反向补偿
 
   constructor() {
     const gold = new THREE.MeshPhysicalMaterial({
@@ -73,6 +75,7 @@ export class GoldenStaff {
     const hand = puppet.group.getObjectByName('joint_hand_f');
     if (!hand) throw new Error('金箍棒挂载失败：悟空缺少 joint_hand_f 关节');
     hand.add(this.group);
+    this.puppet = puppet;
   }
 
   /** 棒是否显示中（双手握棒只在棒可见时解） */
@@ -121,10 +124,11 @@ export class GoldenStaff {
   }
 
   update(dt: number): void {
-    // 平滑缩放入场/收棒（同哨棒）
-    const cur = this.group.scale.y;
-    const next = cur + (Math.max(0.001, this.heldTarget) - cur) * Math.min(1, dt * 10);
-    this.group.scale.set(1, next, 1);
-    this.group.visible = next > 0.02;
+    // 平滑缩放入场/收棒（同哨棒）；臂长标定缩放手关节时按 1/armScale 反向缩放，
+    // 棒是独立道具、长度不跟手臂变（文档第 8 章）
+    const inv = 1 / (this.puppet?.armScale ?? 1);
+    this.enterP += (Math.max(0.001, this.heldTarget) - this.enterP) * Math.min(1, dt * 10);
+    this.group.scale.set(inv, this.enterP * inv, inv);
+    this.group.visible = this.enterP > 0.02;
   }
 }

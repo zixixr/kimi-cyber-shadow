@@ -40,7 +40,9 @@ export class Staff {
   private intact: THREE.Mesh;
   private pieces: { mesh: THREE.Mesh; mat: THREE.MeshPhysicalMaterial; half: 1 | -1; st: PieceState }[] = [];
   private heldTarget = 0; // 1=手持显示（平滑缩放入场）
+  private heldP = 0.001; // 入场进度（与臂缩放补偿解耦，EMA 向 heldTarget 收敛）
   private broken = false;
+  private puppet: Puppet | null = null; // attach 后持有：读臂长缩放做反向补偿
 
   constructor() {
     const intactMat = woodMaterial();
@@ -70,6 +72,12 @@ export class Staff {
     const hand = puppet.group.getObjectByName('joint_hand_f');
     if (!hand) throw new Error('哨棒挂载失败：主角缺少 joint_hand_f 关节');
     hand.add(this.intact);
+    this.puppet = puppet;
+  }
+
+  /** 整棒是否显示中（标定拖点取棒线用；断了/收棒 = false） */
+  get onStage(): boolean {
+    return this.intact.visible;
   }
 
   /** 是否还完好（断了 = false，repair 后恢复） */
@@ -122,15 +130,17 @@ export class Staff {
     this.intact.visible = false;
     this.intact.scale.set(1, 0.001, 1);
     this.heldTarget = 0;
+    this.heldP = 0.001;
   }
 
   update(dt: number): void {
-    // 整棒：平滑缩放入场/收棒
+    // 整棒：平滑缩放入场/收棒；臂长标定缩放手关节时按 1/armScale 反向缩放，
+    // 棒是独立道具、长度不跟手臂变（文档第 8 章）
     if (!this.broken) {
-      const cur = this.intact.scale.y;
-      const next = cur + (Math.max(0.001, this.heldTarget) - cur) * Math.min(1, dt * 10);
-      this.intact.scale.set(1, next, 1);
-      this.intact.visible = next > 0.02;
+      const inv = 1 / (this.puppet?.armScale ?? 1);
+      this.heldP += (Math.max(0.001, this.heldTarget) - this.heldP) * Math.min(1, dt * 10);
+      this.intact.scale.set(inv, this.heldP * inv, inv);
+      this.intact.visible = this.heldP > 0.02;
     }
     // 断截：自由落体 + 翻转 + 淡出（落地不弹，淡出即走）
     for (const p of this.pieces) {
