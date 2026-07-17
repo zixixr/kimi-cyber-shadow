@@ -1,9 +1,10 @@
-// 装配总入口（M0）：渲染器 + 主相机 + 舞台 + 彩色透光投影 + 占位假影人。
-// 主循环每帧：舞台动画 → 摆动占位影人 → 更新投影 → 渲染主画面。
+// 装配总入口（M2）：渲染器 + 主相机 + 舞台 + 彩色透光投影 + 真铰接影人（wusheng 套）。
+// 主循环每帧：舞台动画 → 影人演示动作（手臂 FK 摆动 + 缓慢走位）→ 更新投影 → 渲染主画面。
 
 import * as THREE from 'three';
 import { ShadowProjection, transmissionGuard, type ProjectionHooks } from './stage/projection';
 import { buildTheater, LAMP_POS, SCREEN_CY } from './stage/theater';
+import { Puppet } from './puppet/assembly';
 
 // ---------- 渲染器 ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -28,82 +29,47 @@ const projection = new ShadowProjection();
 const theater = buildTheater(projection.screenMaterial);
 scene.add(theater.group);
 
-// ---------- 占位假影人 ----------
-// TODO(M2)：由真正的铰接 Puppet（src/puppet/assembly.ts）替换。
-// 替换要点：新影人同样放 layer 1、材质用 MeshPhysicalMaterial（皮革透光），
-// 并把材质列表交给 transmissionGuard 生成投影钩子即可。
-interface PlaceholderPuppet {
-  group: THREE.Group;
-  leather: THREE.MeshPhysicalMaterial[];
+// ---------- 影人（wusheng 套，真铰接） + 主循环 ----------
+async function main() {
+  const puppet = await Puppet.load('wusheng');
+  scene.add(puppet.group);
+
+  // 坑③：投影 pass 期间把皮革 transmission 置 0，否则透明 RT 里渲成黑
+  const projectionHooks: ProjectionHooks = transmissionGuard(puppet.leather);
+
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+
+    theater.update(dt, t);
+
+    // 演示动作：缓慢左右走位（被动摆锤腿自然甩动），到端点转向；
+    // 前手 FK 亮相摆动（u=抬臂角/e=肘弯角，文档 6.5 约定），后手微曲配合；
+    // 进深来回变化，展示「近灯虚、贴幕锐」的景深签名。
+    const px = Math.sin(t * 0.3) * 0.55;
+    puppet.setPosition(px);
+    puppet.face(Math.cos(t * 0.3) > 0 ? -1 : 1); // 始终面向走位方向
+    puppet.setDepth(0.25 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.17)));
+    puppet.setArmPose(75 + 45 * Math.sin(t * 1.6), 18 + 12 * Math.sin(t * 1.6 + 1), 'front');
+    puppet.setArmPose(20 + 8 * Math.sin(t * 0.8), 25, 'back');
+    puppet.setLean(Math.sin(t * 0.6) * 0.25);
+    puppet.update(dt);
+
+    const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
+    projection.update(renderer, scene, depthRatio, projectionHooks);
+    renderer.render(scene, camera);
+  });
 }
 
-function buildPlaceholderPuppet(): PlaceholderPuppet {
-  const group = new THREE.Group();
-  const leather: THREE.MeshPhysicalMaterial[] = [];
-
-  // 三块彩色厚片拼一个小武将：头（赭黄）、躯干（朱红）、哨棒（石绿）
-  const head = new THREE.Shape();
-  head.absarc(0, 0.5, 0.065, 0, Math.PI * 2, false);
-
-  const torso = new THREE.Shape();
-  torso.moveTo(-0.1, 0.44);
-  torso.lineTo(0.1, 0.44);
-  torso.lineTo(0.16, 0.06);
-  torso.lineTo(-0.16, 0.06);
-  torso.closePath();
-
-  const staff = new THREE.Shape();
-  staff.moveTo(0.2, 0.1);
-  staff.lineTo(0.235, 0.1);
-  staff.lineTo(0.235, 0.62);
-  staff.lineTo(0.2, 0.62);
-  staff.closePath();
-
-  const parts: Array<[THREE.Shape, number]> = [
-    [head, 0xd9a441],
-    [torso, 0x9e2b25],
-    [staff, 0x2f6e4f],
-  ];
-  for (const [shape, color] of parts) {
-    // 2mm 厚片，transmission 模拟皮革透光（投影 pass 期间会被钩子临时置 0）
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.002, bevelEnabled: false });
-    const mat = new THREE.MeshPhysicalMaterial({
-      color,
-      roughness: 0.6,
-      transmission: 0.45,
-      thickness: 0.002,
-      side: THREE.DoubleSide,
-    });
-    leather.push(mat);
-    group.add(new THREE.Mesh(geo, mat));
-  }
-
-  group.traverse((o) => o.layers.set(1)); // 影人层
-  group.position.set(0, SCREEN_CY - 0.33, 0.3);
-  return { group, leather };
-}
-
-const puppet = buildPlaceholderPuppet();
-scene.add(puppet.group);
-
-// 坑③：投影 pass 期间把皮革 transmission 置 0，否则透明 RT 里渲成黑
-const projectionHooks: ProjectionHooks = transmissionGuard(puppet.leather);
-
-// ---------- 主循环 ----------
-const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const t = clock.elapsedTime;
-
-  theater.update(dt, t);
-
-  // 占位影人：缓慢左右移动 + 前后呼吸，展示「近灯虚、贴幕锐」的景深变化
-  puppet.group.position.x = Math.sin(t * 0.45) * 0.55;
-  puppet.group.position.z = 0.35 + 0.33 * Math.sin(t * 0.2);
-  const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
-
-  projection.update(renderer, scene, depthRatio, projectionHooks);
-  renderer.render(scene, camera);
+main().catch((err) => {
+  // 资产加载失败：在幕前给出明确错误，不把异常吞进动画循环
+  console.error('影人资产加载失败', err);
+  const div = document.createElement('div');
+  div.style.cssText =
+    'position:fixed;top:12px;left:12px;color:#f5e8d0;font:14px/1.5 monospace;white-space:pre';
+  div.textContent = `影人资产加载失败：${String(err)}`;
+  document.body.appendChild(div);
 });
 
 // ---------- 自适应窗口 ----------
