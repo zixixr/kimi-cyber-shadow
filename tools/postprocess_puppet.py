@@ -18,7 +18,8 @@ from skimage import measure
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "tools" / "raw"
-OUT = ROOT / "assets" / "puppets" / "wusheng"
+ASSETS = ROOT / "assets"          # --outroot 可改写到暂存目录
+OUT = ASSETS / "puppets" / "wusheng"
 
 MAGENTA = np.array([255.0, 0.0, 255.0])
 
@@ -167,11 +168,16 @@ def main():
     ap.add_argument("--name")
     ap.add_argument("--set", choices=["wusheng", "tiger", "props", "wukong", "honghaier"], default="wusheng")
     ap.add_argument("--size", type=int, default=512)
+    ap.add_argument("--outroot", help="输出根目录（默认 assets/），用于先写到暂存目录再替换")
     args = ap.parse_args()
+
+    global ASSETS
+    if args.outroot:
+        ASSETS = Path(args.outroot).resolve()
 
     if args.set in ("wukong", "honghaier"):
         # 换角色集合：文件 part_<set>_<part>.png，输出键剥掉角色前缀（与 Puppet 关节名一致）
-        OUT = ROOT / "assets" / "puppets" / args.set
+        OUT = ASSETS / "puppets" / args.set
         prefix = f"{args.set}_"
         all_names = sorted(p.stem[5:] for p in RAW.glob(f"part_{args.set}_*.png"))
         geom_path = OUT / "geometry.json"
@@ -189,18 +195,21 @@ def main():
                         src_f.rename(OUT / f"{key}_{suffix}.png")
         OUT.mkdir(parents=True, exist_ok=True)
         geom_path.write_text(json.dumps(geometry))
-        print(f"wrote {geom_path.relative_to(ROOT)} ({len(geometry['parts'])} parts)")
+        print(f"wrote {geom_path} ({len(geometry['parts'])} parts)")
         return
 
     if args.set == "props":
-        OUT = ROOT / "assets" / "props"
+        OUT = ASSETS / "props"
         all_names = ["tree"]
     elif args.set == "tiger":
-        OUT = ROOT / "assets" / "puppets" / "tiger"
+        OUT = ASSETS / "puppets" / "tiger"
         all_names = sorted(p.stem[5:] for p in RAW.glob("part_tiger_*.png"))
     else:
+        OUT = ASSETS / "puppets" / "wusheng"
+        # 只取武生本名件：排除虎/道具/换角色集合（raw 里各集合原图共存）
         all_names = sorted(p.stem[5:] for p in RAW.glob("part_*.png")
-                           if not p.stem.startswith("part_tiger_") and p.stem != "part_tree")
+                           if not p.stem.startswith(("part_tiger_", "part_wukong_", "part_honghaier_"))
+                           and p.stem != "part_tree")
     geom_path = OUT / "geometry.json"
     geometry = json.loads(geom_path.read_text()) if geom_path.exists() else {"parts": {}}
     names = [args.name] if args.name else all_names
@@ -210,7 +219,7 @@ def main():
             geometry["parts"][name] = r
     OUT.mkdir(parents=True, exist_ok=True)
     geom_path.write_text(json.dumps(geometry))
-    print(f"wrote {geom_path.relative_to(ROOT)} ({len(geometry['parts'])} parts)")
+    print(f"wrote {geom_path} ({len(geometry['parts'])} parts)")
 
 
 if __name__ == "__main__":
