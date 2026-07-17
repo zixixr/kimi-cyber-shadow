@@ -1,0 +1,121 @@
+{
+ "tiger_body": {
+  "parent": null,
+  "pivotInParent": [
+   0,
+   0
+  ],
+  "pivotInSelf": [
+   0.5,
+   0.48
+  ],
+  "height": 0.75,
+  "limits": [
+   -10,
+   10
+  ],
+  "layer": 0
+ },
+ "tiger_head": {
+  "parent": "tiger_body",
+  "pivotInParent": [
+   0.065,
+   0.34
+  ],
+  "pivotInSelf": [
+   0.835,
+   0.81
+  ],
+  "height": 0.34,
+  "limits": [
+   -30,
+   30
+  ],
+  "layer": 2
+ },
+ "tiger_tail": {
+  "parent": "tiger_body",
+  "pivotInParent": [
+   0.945,
+   0.51
+  ],
+  "pivotInSelf": [
+   0.575,
+   0.9
+  ],
+  "height": 0.36,
+  "limits": [
+   -40,
+   40
+  ],
+  "layer": -2
+ },
+ "tiger_leg_nf": {
+  "parent": "tiger_body",
+  "pivotInParent": [
+   0.135,
+   0.71
+  ],
+  "pivotInSelf": [
+   0.445,
+   0.055
+  ],
+  "height": 0.22,
+  "limits": [
+   -45,
+   45
+  ],
+  "layer": 1
+ },
+ "tiger_leg_ff": {
+  "parent": "tiger_body",
+  "pivotInParent": [
+   0.3,
+   0.72
+  ],
+  "pivotInSelf": [
+   0.415,
+   0.065
+  ],
+  "height": 0.22,
+  "limits": [
+   -45,
+   45
+  ],
+  "layer": -1
+ },
+ "tiger_leg_nh": {
+  "parent": "tiger_body",
+  "pivotInParent": [
+   0.62,
+   0.715
+  ],
+  "pivotInSelf": [
+   0.42,
+   0.075
+  ],
+  "height": 0.22,
+  "limits": [
+   -45,
+   45
+  ],
+  "layer": 1
+ },
+ "tiger_leg_fh": {
+  "parent": "tiger_body",
+  "pivotInParent": [
+   0.895,
+   0.715
+  ],
+  "pivotInSelf": [
+   0.445,
+   0.05
+  ],
+  "height": 0.22,
+  "limits": [
+   -45,
+   45
+  ],
+  "layer": -1
+ }
+}

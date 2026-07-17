@@ -1,0 +1,194 @@
+{
+ "belly": {
+  "parent": null,
+  "pivotInParent": [
+   0,
+   0
+  ],
+  "pivotInSelf": [
+   0.5,
+   0.068
+  ],
+  "height": 0.185,
+  "limits": [
+   -15,
+   15
+  ],
+  "layer": 0
+ },
+ "chest": {
+  "parent": "belly",
+  "pivotInParent": [
+   0.5,
+   0.068
+  ],
+  "pivotInSelf": [
+   0.5,
+   0.752
+  ],
+  "height": 0.185,
+  "limits": [
+   -25,
+   25
+  ],
+  "layer": 1
+ },
+ "head": {
+  "parent": "chest",
+  "pivotInParent": [
+   0.505,
+   0.045
+  ],
+  "pivotInSelf": [
+   0.51,
+   0.905
+  ],
+  "height": 0.155,
+  "limits": [
+   -25,
+   25
+  ],
+  "layer": 0.5
+ },
+ "upper_arm_f": {
+  "parent": "chest",
+  "pivotInParent": [
+   0.095,
+   0.3
+  ],
+  "pivotInSelf": [
+   0.51,
+   0.1
+  ],
+  "height": 0.11,
+  "limits": [
+   -170,
+   170
+  ],
+  "layer": 3
+ },
+ "lower_arm_f": {
+  "parent": "upper_arm_f",
+  "pivotInParent": [
+   0.5,
+   0.885
+  ],
+  "pivotInSelf": [
+   0.49,
+   0.075
+  ],
+  "height": 0.105,
+  "limits": [
+   -135,
+   5
+  ],
+  "layer": 4
+ },
+ "hand_f": {
+  "parent": "lower_arm_f",
+  "pivotInParent": [
+   0.5,
+   0.895
+  ],
+  "pivotInSelf": [
+   0.48,
+   0.1
+  ],
+  "height": 0.075,
+  "limits": [
+   -45,
+   45
+  ],
+  "layer": 5,
+  "rest": 0,
+  "art": "hand_b",
+  "flipX": false
+ },
+ "upper_arm_b": {
+  "parent": "chest",
+  "pivotInParent": [
+   0.905,
+   0.295
+  ],
+  "pivotInSelf": [
+   0.5,
+   0.095
+  ],
+  "height": 0.11,
+  "limits": [
+   -170,
+   170
+  ],
+  "layer": -1
+ },
+ "lower_arm_b": {
+  "parent": "upper_arm_b",
+  "pivotInParent": [
+   0.51,
+   0.925
+  ],
+  "pivotInSelf": [
+   0.49,
+   0.065
+  ],
+  "height": 0.105,
+  "limits": [
+   -5,
+   135
+  ],
+  "layer": -2
+ },
+ "hand_b": {
+  "parent": "lower_arm_b",
+  "pivotInParent": [
+   0.5,
+   0.925
+  ],
+  "pivotInSelf": [
+   0.48,
+   0.1
+  ],
+  "height": 0.075,
+  "limits": [
+   -45,
+   45
+  ],
+  "layer": -3,
+  "rest": 0,
+  "flipX": true
+ },
+ "leg_f": {
+  "parent": "belly",
+  "pivotInParent": [
+   0.38,
+   0.52
+  ],
+  "pivotInSelf": [
+   0.52,
+   0.09
+  ],
+  "height": 0.26,
+  "limits": [
+   -50,
+   50
+  ],
+  "layer": -1
+ },
+ "leg_b": {
+  "parent": "belly",
+  "pivotInParent": [
+   0.58,
+   0.53
+  ],
+  "pivotInSelf": [
+   0.53,
+   0.065
+  ],
+  "height": 0.26,
+  "limits": [
+   -50,
+   50
+  ],
+  "layer": -2
+ }
+}
