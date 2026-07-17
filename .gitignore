@@ -27,3 +27,4 @@ dist-ssr
 tools/raw/
 tools/.venv/
 tools/__pycache__/
+assets-regen/
