@@ -36,12 +36,13 @@ const ROWS: Row[] = [
   { id: 'none-move', hand: '🤚 自然手 + 平移手掌', action: '走 / 跑（净位移才走，微晃原地不动）' },
   { id: 'open', hand: '🖐 五指张开', action: '亮相：对观众持续挥手' },
   { id: 'fist', hand: '✊ 握拳（保持即可）', action: '拳脚连招：直拳→抡拳→踢腿→弓步' },
-  { id: 'sword', hand: '✌️ 剑指（食+中指）', action: '器械套路：高劈→侧扫→前刺→环绕' },
+  { id: 'sword', hand: '✌️ 剑指（食+中指）', action: '持哨棒：高劈→侧扫→前刺；打枯树两下棒断，断后自动变拳脚' },
   { id: 'point', hand: '☝️ 单伸食指', action: '指向：前手 IK 跟随指尖（360°）' },
   { id: 'thumb', hand: '👍 竖拇指', action: '傲立：叉腰扬后手' },
   { id: 'body', hand: '⬆️ 快提 / ⬇️ 压低 / ↔️ 持续同向甩', action: '跳 / 蹲 / 转身' },
   { id: 'depth', hand: '🔦 手掌前推（稳定 0.4s 后生效）', action: '近灯 → 影子变大晕开' },
-  { id: 'second', hand: '🐯 第二只手', action: '已预留 → M4 老虎 / M5 第二角色' },
+  { id: 'second', hand: '🐯 第二只手 = 老虎', action: '移动=走位 · 握拳=扑击 · 张开=咆哮（无手时 AI 接管）' },
+  { id: 'battle', hand: '🌳 玩法链（水浒）', action: '哨棒打树两下→树倒棒断→拳脚打虎→HP 归零伏诛（r=再战）' },
 ];
 
 export class CheatSheet {
@@ -98,13 +99,14 @@ export class CheatSheet {
       borderTop: '1px solid #c8a05a33',
       color: '#37e6a0',
       fontSize: '12px',
+      whiteSpace: 'pre-line', // 战斗状态行（第二行）换行生效
     } as Partial<CSSStyleDeclaration>);
     panel.appendChild(this.status);
     document.body.appendChild(panel);
   }
 
-  /** 每帧更新高亮与状态行 */
-  update(info: { gesture: Gesture | null; state: HeroState | null; hands: number; source: string }): void {
+  /** 每帧更新高亮与状态行；battle = 战斗状态行（水浒场景：虎 HP/棒/树 + 战报） */
+  update(info: { gesture: Gesture | null; state: HeroState | null; hands: number; source: string; battle?: string }): void {
     let active = '';
     if (info.gesture && info.gesture !== 'none') active = info.gesture;
     else if (info.state === 'walk' || info.state === 'run') active = 'none-move';
@@ -118,5 +120,6 @@ export class CheatSheet {
       info.gesture === null
         ? `${info.source} · 未检测到手`
         : `${info.source} · 手×${info.hands} · ${GESTURE_LABEL[info.gesture]} → ${STATE_LABEL[info.state ?? 'idle']}`;
+    if (info.battle) this.status.textContent += `\n${info.battle}`;
   }
 }

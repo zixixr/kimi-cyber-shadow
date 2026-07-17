@@ -1,20 +1,30 @@
-// 装配总入口（M3）：舞台 + 彩色透光投影 + 真铰接影人（wusheng 套）+ 手势控制系统。
+// 装配总入口（M4）：舞台 + 彩色透光投影 + 真铰接影人（wusheng 套）+ 手势控制系统 + 武松打虎玩法。
+// 场景路由（文档第 7 章）：?scene=shuihu（默认，武松打虎：老虎 AI/第二只手、枯树哨棒、
+// 命中判定与音效）；?scene=xiyou（西游，M5 实现，当前占位 = 排练模式 + 提示）。
 // 控制源：默认摄像头（MediaPipe）；?debug=mouse 强制鼠标调试源；
 // 摄像头/模型加载失败优雅降级鼠标源并顶部提示（无摄像头也能开发）。
 // ?debug=calib：姿势标定模式（←/→ 切预设 FK 姿势，肉眼核对朝向符号，文档 6.6）。
-// 主循环：手信号 → 导演（运动层+手势状态机）→ Puppet 公共 API → 投影 → 渲染；对照表常驻。
+// 主循环：手信号 →（棒断降级改写）→ 导演 → Puppet 公共 API → 玩法判定 → 投影 → 渲染。
 
 import * as THREE from 'three';
 import { ShadowProjection, transmissionGuard, type ProjectionHooks } from './stage/projection';
 import { buildTheater, LAMP_POS, SCREEN_CY } from './stage/theater';
 import { Puppet } from './puppet/assembly';
+import { Tiger } from './puppet/tiger';
+import { Tree } from './stage/tree';
+import { Staff } from './stage/staff';
+import { Sfx } from './audio/sfx';
+import { Battle, degradeSignals, heroAttack } from './game/battle';
 import { Director, type PuppetControl } from './hand/director';
 import { MediaPipeSource } from './hand/mediapipe';
 import { MouseDebugSource, type HandSource } from './hand/source';
 import { CalibMode } from './ui/calib';
 import { CheatSheet } from './ui/cheatsheet';
 
-const DEBUG = new URLSearchParams(location.search).get('debug');
+const PARAMS = new URLSearchParams(location.search);
+const DEBUG = PARAMS.get('debug');
+/** 场景：shuihu=武松打虎（默认） / xiyou=悟空打红孩儿（M5 占位） */
+const SCENE: 'shuihu' | 'xiyou' = PARAMS.get('scene') === 'xiyou' ? 'xiyou' : 'shuihu';
 
 // ---------- 渲染器 ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -84,16 +94,15 @@ function showToast(text: string): void {
   document.body.appendChild(div);
 }
 
-// ---------- 影人（wusheng 套） + 控制系统 + 主循环 ----------
+// ---------- 影人（wusheng 套） + 控制系统 + 玩法 + 主循环 ----------
 async function main() {
   const puppet = await Puppet.load('wusheng');
   scene.add(puppet.group);
 
-  // 坑③：投影 pass 期间把皮革 transmission 置 0，否则透明 RT 里渲成黑
-  const projectionHooks: ProjectionHooks = transmissionGuard(puppet.leather);
-
-  // ?debug=calib：姿势标定模式（不接控制系统，导演/对照表不上场）
+  // ?debug=calib：姿势标定模式（不接控制系统/玩法，导演/对照表不上场）
   if (DEBUG === 'calib') {
+    // 坑③：投影 pass 期间把皮革 transmission 置 0，否则透明 RT 里渲成黑
+    const projectionHooks: ProjectionHooks = transmissionGuard(puppet.leather);
     puppet.face(1);
     const calib = new CalibMode(puppet);
     const clock = new THREE.Clock();
@@ -109,6 +118,58 @@ async function main() {
     return;
   }
 
+  // ---------- 音效（两场景通用；首次用户交互后解锁 + BGM 锣鼓循环开播）----------
+  const sfx = new Sfx();
+  const sfxReady = sfx.init().catch((err) => console.warn('[sfx] 初始化失败，本局无声', err));
+  const unlock = () => void sfxReady.then(() => sfx.unlock());
+  addEventListener('pointerdown', unlock, { once: true });
+  addEventListener('keydown', unlock, { once: true });
+
+  // ---------- 水浒场景系统（M4）：老虎 + 枯树 + 哨棒 + 玩法链 ----------
+  let tiger: Tiger | null = null;
+  let tree: Tree | null = null;
+  let staff: Staff | null = null;
+  let battle: Battle | null = null;
+  const guardMats = [...puppet.leather];
+
+  if (SCENE === 'xiyou') {
+    // M5 占位：路由结构留好，先走排练模式（主角可控，无老虎/道具/玩法链）
+    showToast('「悟空打红孩儿」M5 敬请期待 —— 当前为排练模式（主角可控，无玩法）');
+  } else {
+    try {
+      tiger = await Tiger.load();
+      scene.add(tiger.group);
+    } catch (err) {
+      console.warn('[shuihu] 老虎资产加载失败，本局无老虎', err);
+      showToast('老虎资产加载失败，本局无老虎（仅排练）');
+    }
+    try {
+      tree = await Tree.load();
+      scene.add(tree.group);
+    } catch (err) {
+      console.warn('[shuihu] 枯树资产加载失败，本局无枯树', err);
+    }
+    staff = new Staff();
+    staff.attach(puppet);
+    battle = new Battle();
+    if (tiger) guardMats.push(...tiger.leather);
+    if (tree) guardMats.push(...tree.leather);
+    guardMats.push(...staff.leather);
+
+    // r = 重开一局：老虎复活、枯树立回、哨棒修好、玩法链复位
+    addEventListener('keydown', (e) => {
+      if (e.key !== 'r' || !battle) return;
+      tiger?.revive();
+      tree?.reset();
+      staff?.repair();
+      battle.reset();
+      sfx.play('gong', { volume: 0.8, rate: 1.2 });
+    });
+  }
+
+  // 坑③：投影 pass 期间把皮革 transmission 置 0（主角 + 老虎 + 枯树 + 哨棒一起守）
+  const projectionHooks: ProjectionHooks = transmissionGuard(guardMats);
+
   const source = await openSource();
   const director = new Director(puppet.armReach);
   const sheet = new CheatSheet();
@@ -120,17 +181,54 @@ async function main() {
 
     theater.update(dt, t);
 
-    // 手信号 → 导演 → 主角影人（第二只手的意图本阶段只路由不驱动，M4/M5 接管）
-    const signals = source.read();
+    // 手信号 →（棒断后剑指降级拳脚）→ 导演 → 主角影人
+    let signals = source.read();
+    if (battle) signals = degradeSignals(signals, battle.staffBroken);
     const frame = director.update(dt, t, signals);
+
+    // 虎扑命中主角的击退演出：根位置 + 倾身加衰减偏移
+    if (battle) {
+      const f = battle.flinch();
+      frame.hero.rootX += f.dx;
+      frame.hero.lean += f.lean;
+    }
     applyControl(puppet, frame.hero);
     puppet.update(dt);
+
+    // ---------- 水浒玩法：老虎 / 枯树 / 哨棒 / 命中判定 / 音效 ----------
+    if (battle) {
+      staff!.setHeld(frame.hero.state === 'staff' && !battle.staffBroken);
+      staff!.update(dt);
+      if (tiger) {
+        // 第二只手 = 老虎（active=false 时 AI 自动接管）
+        tiger.setControl(frame.second.active ? frame.second : null);
+        tiger.update(dt, t, frame.hero.rootX);
+        if (tiger.justPounced || tiger.justRoared) sfx.play('roar', { volume: 0.9 });
+      }
+      tree?.update(dt);
+
+      // 命中判定：攻击拍力度峰值 + 面向 + 射程（棒 0.5m / 拳 0.3m）
+      const atk = heroAttack(frame.hero.state, t);
+      const ev = battle.update(dt, t, atk, frame.hero.rootX, frame.hero.facing, tiger, tree);
+      if (ev.drum) sfx.play('drum', { volume: 0.7, rate: ev.drum === 'kick' ? 0.8 : 1 });
+      if (ev.treeCrack) {
+        sfx.play('crack', { volume: ev.treeCrack === 'broke' ? 1 : 0.5, rate: ev.treeCrack === 'broke' ? 0.9 : 1.4 });
+        if (ev.treeCrack === 'broke') staff!.breakOff(scene); // 树倒棒断（水浒名场面）
+      }
+      if (ev.tigerHit) sfx.play('gong', { volume: 0.9, minGap: 0.2 });
+      if (ev.tigerDied) {
+        // 伏诛：双声降调大锣
+        sfx.play('gong', { volume: 1, rate: 0.6 });
+        setTimeout(() => sfx.play('gong', { volume: 0.7, rate: 0.5 }), 500);
+      }
+    }
 
     sheet.update({
       gesture: signals.length > 0 ? frame.hero.gesture : null,
       state: frame.hero.state,
       hands: signals.length,
       source: source.name,
+      battle: battle ? battle.statusLine(tiger, tree, t) : undefined,
     });
 
     const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
