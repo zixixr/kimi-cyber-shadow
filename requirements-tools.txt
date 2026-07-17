@@ -1,0 +1,5 @@
+numpy==2.5.1
+pillow==12.3.0
+requests==2.34.2
+scikit-image==0.26.0
+scipy==1.18.0

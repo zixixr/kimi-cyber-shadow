@@ -25,3 +25,5 @@ dist-ssr
 
 # 资产重生成中间产物
 tools/raw/
+tools/.venv/
+tools/__pycache__/
