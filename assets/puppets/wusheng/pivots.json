@@ -31,13 +31,21 @@
    -25,
    25
   ],
-  "layer": 1
+  "layer": 1,
+  "erase": [
+   [
+    0.37,
+    0.0,
+    0.63,
+    0.19
+   ]
+  ]
  },
  "head": {
   "parent": "chest",
   "pivotInParent": [
    0.505,
-   0.045
+   0.115
   ],
   "pivotInSelf": [
    0.51,

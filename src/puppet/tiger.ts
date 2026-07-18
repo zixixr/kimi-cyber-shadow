@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import type { PartGeom, PivotsFile } from './assembly';
+import { cookAlphaTexture } from './assembly';
 import type { SecondRoleIntent } from '../hand/director';
 
 const THICK = 0.002; // 皮片厚度 2mm（与 assembly 一致）
@@ -116,7 +117,7 @@ export class Tiger {
           loader.loadAsync(`${base}/${name}_alpha.png${v}`),
         ]);
         dye.colorSpace = THREE.SRGBColorSpace;
-        textures[name] = { dye, alpha };
+        textures[name] = { dye, alpha: cookAlphaTexture(alpha, pivots[name]) };
       }),
     );
     return new Tiger(pivots, geo.parts, textures);

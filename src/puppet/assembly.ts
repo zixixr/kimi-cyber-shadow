@@ -44,9 +44,42 @@ export interface PivotDef {
   art?: string;
   /** 水平镜像（绕铆点翻面调转虎口）：前手 false、后手 true */
   flipX?: boolean;
+  /** 连接桩擦除区（文档 4.3：露出的素皮铆桩运行时涂透明）：本件图内的归一化 UV 矩形列表 */
+  erase?: [number, number, number, number][];
 }
 
 export type PivotsFile = Record<string, PivotDef>;
+
+/**
+ * alpha 贴图运行时加工（文档 4.3/第 8 章）：
+ *  - erase 矩形涂透明：遮住暴露在外的素皮连接桩；
+ *  - pivotInSelf 处填实小圆点：铆孔透出的黑点是「铆钉太明显」的来源，填平即遮钉
+ *    （dye 贴图在离线后处理时已做孔区近邻填色，填实后颜色无缝）。
+ */
+export function cookAlphaTexture(tex: THREE.Texture, def: PivotDef): THREE.Texture {
+  const rects = def.erase ?? [];
+  const img = tex.image as HTMLImageElement;
+  const w = img.width;
+  const h = img.height;
+  const cv = document.createElement('canvas');
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  for (const [u0, v0, u1, v1] of rects) {
+    ctx.clearRect(u0 * w, v0 * h, (u1 - u0) * w, (v1 - v0) * h);
+  }
+  const r = 0.018 * Math.min(w, h);
+  ctx.fillStyle = '#fff'; // alphaMap 取绿通道，白色=不透明
+  const [u, v] = def.pivotInSelf;
+  ctx.beginPath();
+  ctx.arc(u * w, v * h, r, 0, Math.PI * 2);
+  ctx.fill();
+  const out = new THREE.CanvasTexture(cv);
+  out.flipY = tex.flipY;
+  out.colorSpace = tex.colorSpace;
+  return out;
+}
 
 /** 前手 / 后手 */
 export type ArmSide = 'front' | 'back';
@@ -219,7 +252,7 @@ export class Puppet {
           loader.loadAsync(`${base}/${set}/${name}_alpha.png${v}`),
         ]);
         dye.colorSpace = THREE.SRGBColorSpace; // dye 是颜色贴图；alpha 保持线性
-        textures[name] = { dye, alpha };
+        textures[name] = { dye, alpha: cookAlphaTexture(alpha, pivots[name]) };
       }),
     );
     return new Puppet(pivots, geo.parts, textures);
