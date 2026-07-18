@@ -61,8 +61,8 @@
  "upper_arm_f": {
   "parent": "chest",
   "pivotInParent": [
-   0.095,
-   0.3
+   0.169,
+   0.242
   ],
   "pivotInSelf": [
    0.51,
@@ -115,8 +115,8 @@
  "upper_arm_b": {
   "parent": "chest",
   "pivotInParent": [
-   0.905,
-   0.295
+   0.826,
+   0.242
   ],
   "pivotInSelf": [
    0.5,

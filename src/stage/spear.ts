@@ -43,7 +43,9 @@ export class FireSpear {
     });
     this.leather.push(tipMat);
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.011, TIP_LEN, 8), tipMat);
-    tip.position.y = (LEN + TIP_LEN) / 2;
+    // 枪头朝外（手关节局部 -y，顺手臂延伸方向）；圆锥 apex 默认 +y，转 π 让它冲下
+    tip.rotation.x = Math.PI;
+    tip.position.y = -(LEN + TIP_LEN) / 2;
     this.group.add(tip);
 
     // 枪头小火舌：加色圆锥，update 里呼吸式闪烁（非皮革，不进 transmissionGuard）
@@ -55,7 +57,8 @@ export class FireSpear {
       depthWrite: false,
     });
     this.flame = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.055, 8), this.flameMat);
-    this.flame.position.y = (LEN + TIP_LEN) / 2 + 0.045;
+    this.flame.rotation.x = Math.PI;
+    this.flame.position.y = -(LEN + TIP_LEN) / 2 - 0.045;
     this.group.add(this.flame);
 
     this.group.position.set(0, GRIP_Y, Z_OFF);
