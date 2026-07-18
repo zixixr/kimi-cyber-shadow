@@ -151,6 +151,14 @@ async function main() {
   let tuner: Tuner | null = null; // 拖点标定（场景系统就位后创建；标定中 r = 重置标定值而非重开）
   const guardMats = [...puppet.leather];
 
+  // c = 换幕（水浒 ↔ 西游）：保留 debug 等参数整页重载，对局状态清零（标定模式下让位）
+  addEventListener('keydown', (e) => {
+    if (e.key !== 'c' || tuner?.visible) return;
+    const p = new URLSearchParams(location.search);
+    p.set('scene', SCENE === 'xiyou' ? 'shuihu' : 'xiyou');
+    location.search = p.toString();
+  });
+
   if (SCENE === 'xiyou') {
     try {
       foe = await Puppet.load('honghaier');

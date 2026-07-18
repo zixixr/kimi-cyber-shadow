@@ -55,6 +55,9 @@ function rowsFor(scene: 'shuihu' | 'xiyou'): Row[] {
     xy
       ? { id: 'battle', hand: '🔥 玩法（西游）', action: '棒/拳脚命中→红孩儿 HP 归零败阵→悟空胜利谢幕（r=再战）' }
       : { id: 'battle', hand: '🌳 玩法链（水浒）', action: '哨棒打树两下→树倒棒断→拳脚打虎→HP 归零伏诛（r=再战）' },
+    xy
+      ? { id: 'scene', hand: '🎭 按 c 换幕', action: '切到水浒 · 武松打虎' }
+      : { id: 'scene', hand: '🎭 按 c 换幕', action: '切到西游 · 悟空打红孩儿' },
   ];
 }
 
