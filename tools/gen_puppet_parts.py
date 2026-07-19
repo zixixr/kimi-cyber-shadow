@@ -261,7 +261,7 @@ CHAR_VARIANTS = {
     },
 }
 
-# 道具：景阳冈枯树（哨棒打断用）
+# 道具：景阳冈枯树（哨棒打断用）+ 衬景布景（传统皮影有大型布景传统：花果山/金銮殿）
 PARTS_PROPS = {
     "tree": (
         "A gnarled old leafless tree for a shadow puppet stage set, single "
@@ -270,6 +270,33 @@ PARTS_PROPS = {
         "ochre and ink-black leather tones. The trunk base is wide and flat "
         "at the bottom. Fills most of the frame vertically. Just the one "
         "tree, nothing else."
+    ),
+    "jiuqi": (
+        "A tall wine-shop banner pole for a shadow puppet stage set, single "
+        "isolated piece: a slim vertical bamboo pole planted in a small mound "
+        "base, a large rectangular cloth banner flying from its top, the "
+        "banner cloth decorated with carved openwork wave borders and ONE big "
+        "bold carved Chinese-character-shaped ornamental medallion in the "
+        "center (abstract calligraphy pattern, NOT real text), ochre and "
+        "crimson leather tones. The pole is on the LEFT, the banner flies to "
+        "the RIGHT. Just this one banner pole, nothing else."
+    ),
+    "shanshi": (
+        "A layered mountain rock formation for a shadow puppet stage set, "
+        "single isolated piece: two or three overlapping jagged rocky peaks "
+        "rising from a shared flat base, a few tufts of carved wild grass on "
+        "the ledges, carved openwork rock-crack texture, ochre and ink-black "
+        "leather tones. Wide horizontal composition, base flat at the bottom. "
+        "Just this one rock formation, nothing else."
+    ),
+    "huoyun": (
+        "The Fire-Cloud Cave (huo yun dong) for a shadow puppet stage set, "
+        "single isolated piece: a gnarled dead pine growing from a jagged "
+        "rocky cave entrance, swirling carved cloud scrolls rising around the "
+        "rocks, a dark cave mouth opening in the center-left, ochre, crimson "
+        "and ink-black leather tones with flame-curl carving motifs. Wide "
+        "horizontal composition, base flat at the bottom. Just this one cave "
+        "scene piece, nothing else."
     ),
 }
 

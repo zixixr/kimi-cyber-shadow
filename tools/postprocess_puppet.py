@@ -23,6 +23,9 @@ OUT = ASSETS / "puppets" / "wusheng"
 
 MAGENTA = np.array([255.0, 0.0, 255.0])
 
+# 道具集合的部件名（与 gen_puppet_parts.PARTS_PROPS 保持一致）
+PROPS_NAMES = ["tree", "jiuqi", "shanshi", "huoyun"]
+
 
 def key_magenta(img, thr=170):
     """品红抠图（lingjian postprocess.py 同款思路）：色距<thr → 透明；并去溢色。"""
@@ -200,7 +203,9 @@ def main():
 
     if args.set == "props":
         OUT = ASSETS / "props"
-        all_names = ["tree"]
+        all_names = sorted(p.stem[5:] for p in RAW.glob("part_*.png")
+                           if not p.stem.startswith(("part_tiger_", "part_wukong_", "part_honghaier_"))
+                           and p.stem[5:] in PROPS_NAMES)
     elif args.set == "tiger":
         OUT = ASSETS / "puppets" / "tiger"
         all_names = sorted(p.stem[5:] for p in RAW.glob("part_tiger_*.png"))
@@ -209,7 +214,7 @@ def main():
         # 只取武生本名件：排除虎/道具/换角色集合（raw 里各集合原图共存）
         all_names = sorted(p.stem[5:] for p in RAW.glob("part_*.png")
                            if not p.stem.startswith(("part_tiger_", "part_wukong_", "part_honghaier_"))
-                           and p.stem != "part_tree")
+                           and p.stem[5:] not in PROPS_NAMES)
     geom_path = OUT / "geometry.json"
     geometry = json.loads(geom_path.read_text()) if geom_path.exists() else {"parts": {}}
     names = [args.name] if args.name else all_names

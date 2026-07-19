@@ -58,6 +58,7 @@ function rowsFor(scene: 'shuihu' | 'xiyou'): Row[] {
     xy
       ? { id: 'scene', hand: '🎭 按 c 换幕', action: '切到水浒 · 武松打虎' }
       : { id: 'scene', hand: '🎭 按 c 换幕', action: '切到西游 · 悟空打红孩儿' },
+    { id: 'backstage', hand: '🎬 按 b 幕后模式', action: '绕到幕后看灯/幕/皮偶/操纵杆与光路；拖拽环绕 · 滚轮缩放 · 再按 b 回前台' },
   ];
 }
 

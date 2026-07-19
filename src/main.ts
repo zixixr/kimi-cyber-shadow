@@ -2,6 +2,9 @@
 // 场景路由（文档第 7 章）：?scene=shuihu（默认，M4 武松打虎：老虎 AI/第二只手、枯树哨棒、
 // 命中判定与音效）；?scene=xiyou（M5 悟空打红孩儿：双手双角色、金箍棒双手握棒、
 // 火尖枪、三昧真火、筋斗云、受击/败阵/胜利谢幕演出）。
+// 体验增强：传统布景上台（props.ts，酒旗/山石/火云洞厚片衬景）；开场报幕（opening.ts，
+// 全暗→渐亮→锣+字幕牌，期间导演/手势输入挂起）；幕后模式（backstage.ts，按 b 侧后机位
+// 环绕看灯/幕/皮偶/三根操纵杆 + 投影原理标注，tuner 标定中 b 让位）。
 // 控制源：默认摄像头（MediaPipe）；?debug=mouse 强制鼠标调试源；
 // 摄像头/模型加载失败优雅降级鼠标源并顶部提示（无摄像头也能开发）。
 // ?debug=calib：姿势标定模式（←/→ 切预设 FK 姿势，肉眼核对朝向符号，文档 6.6）。
@@ -15,6 +18,7 @@ import { buildTheater, LAMP_POS, SCREEN_CY } from './stage/theater';
 import { Puppet } from './puppet/assembly';
 import { Tiger } from './puppet/tiger';
 import { Tree } from './stage/tree';
+import { SHUIHU_PROPS, StageProp, XIYOU_PROPS } from './stage/props';
 import { Staff } from './stage/staff';
 import { Sfx } from './audio/sfx';
 import { Battle, degradeSignals, heroAttack } from './game/battle';
@@ -28,6 +32,8 @@ import { FireSpear } from './stage/spear';
 import { SomersaultCloud } from './stage/cloud';
 import { CalibMode } from './ui/calib';
 import { CheatSheet } from './ui/cheatsheet';
+import { Opening } from './ui/opening';
+import { Backstage } from './ui/backstage';
 import { Tuner } from './ui/tuner';
 import { loadCalib } from './ui/calibValues';
 
@@ -222,6 +228,18 @@ async function main() {
     });
   }
 
+  // ---------- 传统布景上台（酒旗/山石/火云洞）：厚片衬景摆幕后不同进深，材质一并守坑③ ----------
+  // 资产缺失时单件跳过不阻塞（布景只是衬景）；摆位表见 props.ts 顶部常量
+  for (const placement of SCENE === 'xiyou' ? XIYOU_PROPS : SHUIHU_PROPS) {
+    try {
+      const prop = await StageProp.load(placement);
+      scene.add(prop.group);
+      guardMats.push(...prop.leather);
+    } catch (err) {
+      console.warn(`[props] 布景「${placement.name}」加载失败，本局无此布景`, err);
+    }
+  }
+
   // 坑③：投影 pass 期间把皮革 transmission 置 0（主角 + 老虎/红孩儿 + 道具一起守）
   const projectionHooks: ProjectionHooks = transmissionGuard(guardMats);
 
@@ -320,6 +338,32 @@ async function main() {
     moving: false,
   };
 
+  // ---------- 开场报幕：全暗 0.6s → 灯 1.2s 渐亮 → 一声锣 + 字幕牌 2.4s 淡出 ----------
+  // 报幕期间主循环走门闩分支（导演/手势挂起）；只建一次——r 重开不重播，c 换幕整页重载天然重播
+  const opening = new Opening({
+    theater,
+    dimUniform: projection.screenMaterial.uniforms.dim as { value: number },
+    sfx,
+    title: SCENE === 'xiyou' ? '孙悟空大战红孩儿 · 火云洞' : '武松打虎 · 景阳冈',
+  });
+
+  // ---------- 幕后模式（b 键）：侧后 45° 环绕机位 + 三杆操纵可视化 + 投影原理标注 ----------
+  // 人形影人才有杆（主角；西游加红孩儿；老虎非人形不加）；tuner 标定中 b 让位
+  const backstage = new Backstage({
+    scene,
+    camera,
+    dom: renderer.domElement,
+    puppets: SCENE === 'xiyou' && foe ? [puppet, foe] : [puppet],
+    blocked: () => tuner?.visible ?? false,
+  });
+
+  // 报幕候场位：导演接管前先把影人各就各位（默认都在 x=0 会重叠成一坨）
+  puppet.setPosition(0.2);
+  if (SCENE === 'xiyou' && foe) {
+    foe.setPosition(-0.25);
+    foe.face(-1); // 红孩儿在左、面向悟空
+  }
+
   const clock = new THREE.Clock();
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.05);
@@ -327,6 +371,20 @@ async function main() {
 
     theater.update(dt, t);
     applyProportions(); // 👤💪🦵 标定比例常驻生效（含正常运行）
+
+    // ---------- 开场报幕门闩：报幕未完 → 导演/玩法/标定挂起（手势帧丢弃防开演瞬移）， ----------
+    // 只推进灯渐亮/字幕牌；投影照常渲（幕布渐亮看得到影人站位），幕后模式此时也可进入
+    if (!opening.done) {
+      source.read();
+      opening.update(dt);
+      puppet.update(dt);
+      foe?.update(dt);
+      backstage.update(dt);
+      const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
+      projection.update(renderer, scene, depthRatio, projectionHooks);
+      renderer.render(scene, camera);
+      return;
+    }
 
     // ---------- 拖点标定定格（t 键）：手势/战斗全部暂停，摆位静止好拖 ----------
     if (tuner?.visible) {
@@ -357,6 +415,7 @@ async function main() {
         staff.update(dt);
       }
       tuner.update();
+      backstage.update(dt); // 标定中 b 已让位，这里只兜「标定前已在幕后」的机位/杆/标注
       const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
       projection.update(renderer, scene, depthRatio, projectionHooks);
       renderer.render(scene, camera);
@@ -454,6 +513,8 @@ async function main() {
           ? xiyou.statusLine(frame.second.active, t)
           : undefined,
     });
+
+    backstage.update(dt); // 幕后模式：机位环绕/操纵杆/标注逐帧跟随（前台态无副作用）
 
     const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
     projection.update(renderer, scene, depthRatio, projectionHooks);

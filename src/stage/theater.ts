@@ -13,6 +13,8 @@ export interface Theater {
   screen: THREE.Mesh; // 幕布网格（材质由投影模块提供）
   lampLight: THREE.PointLight; // 幕后点光源
   dust: THREE.Points; // 光路浮尘
+  /** 调光比 0~1：update 每帧乘到点光源强度上（开场报幕「全暗→渐亮」用，平时恒 1） */
+  lampDim: number;
   update(dt: number, t: number): void;
 }
 
@@ -119,15 +121,16 @@ export function buildTheater(screenMaterial: THREE.Material): Theater {
 
   const flamePhase = Math.random() * 10;
 
-  return {
+  const theater: Theater = {
     group,
     screen,
     lampLight,
     dust,
+    lampDim: 1,
     update(_dt: number, t: number) {
-      // 灯芯呼吸 + 光强微颤
+      // 灯芯呼吸 + 光强微颤（× lampDim 调光比：报幕全暗/渐亮时压暗）
       const flicker = 1 + Math.sin(t * 9 + flamePhase) * 0.06 + Math.sin(t * 23) * 0.03;
-      lampLight.intensity = 8 * flicker;
+      lampLight.intensity = 8 * flicker * theater.lampDim;
       flame.scale.setScalar(flicker);
       // 浮尘布朗漂移
       const p = dustGeo.attributes.position as THREE.BufferAttribute;
@@ -138,4 +141,5 @@ export function buildTheater(screenMaterial: THREE.Material): Theater {
       p.needsUpdate = true;
     },
   };
+  return theater;
 }

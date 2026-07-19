@@ -8,6 +8,8 @@
 //  ③ 投影 pass 期间皮革材质 transmission 临时置 0 —— 由 update 的 before/after 钩子实现，
 //     后续 Puppet 用 transmissionGuard() 注册；
 //  ④ 幕布采样 RT 时 uv.x 翻转（幕布法线朝 -z 且绕 y 转了 180°）。
+// 幕布 shader 另有两处为体验特性服务：dim uniform = 整体调光（开场报幕全暗→渐亮）；
+// gl_FrontFacing 分支 = 背面输出暗色素背衬（幕后模式看幕背，不透投影镜像）。
 
 import * as THREE from 'three';
 import { LAMP_POS, SCREEN_CY, SCREEN_H, SCREEN_W } from './theater';
@@ -107,6 +109,7 @@ export class ShadowProjection {
         shadowTex: { value: this.rtB.texture },
         baseColor: { value: new THREE.Color(0xf5e8d0) }, // 暖白幕布底色
         lampGlow: { value: new THREE.Color(0xffe0b0) }, // 灯光暖色
+        dim: { value: 1 }, // 幕布整体调光（开场报幕全暗→渐亮；平时恒 1）
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -116,8 +119,14 @@ export class ShadowProjection {
         uniform sampler2D shadowTex;
         uniform vec3 baseColor;
         uniform vec3 lampGlow;
+        uniform float dim;
         varying vec2 vUv;
         void main() {
+          // 幕背（幕后模式可见）：暗色素背衬，不透出投影画面的镜像
+          if (!gl_FrontFacing) {
+            gl_FragColor = vec4(vec3(0.16, 0.12, 0.09) * dim, 1.0);
+            return;
+          }
           // 坑④：幕布法线朝 -z 且绕 y 转了 180°，u 翻转才对齐灯位相机视角
           vec2 uv = vec2(1.0 - vUv.x, vUv.y);
           vec4 sh = texture2D(shadowTex, uv);
@@ -127,7 +136,7 @@ export class ShadowProjection {
           vec3 lit = baseColor * hot * lampGlow;
           // 皮影透光：影区 = 皮色 × 透光率（随热区一起衰减）
           vec3 col = mix(lit, sh.rgb * 0.92 * hot, sh.a);
-          gl_FragColor = vec4(col, 1.0);
+          gl_FragColor = vec4(col * dim, 1.0);
         }
       `,
       side: THREE.DoubleSide,
