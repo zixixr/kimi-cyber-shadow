@@ -65,23 +65,35 @@ const ROD_DEFS: ReadonlyArray<{ joint: string; off: readonly [number, number, nu
   { joint: 'hand_b', off: [-0.04, -0.06, 0.3] }, // 手签：后手水平向后
 ];
 
-/** 一套影人的三根操纵杆（细杆 + 顶端小球），每帧从台下手位连到关节世界坐标 */
+// 兽形影人（虎）：身 1 杆 + 头 1 杆（皮影兽形同理：主杆在背/颈，头杆控首）
+const TIGER_ROD_DEFS: ReadonlyArray<{ joint: string; off: readonly [number, number, number] }> = [
+  { joint: 'tiger_body', off: [0, -0.05, 0.32] },
+  { joint: 'tiger_head', off: [0, -0.04, 0.3] },
+];
+
+/** 有铰链关节世界坐标的角色（Puppet / Tiger） */
+interface JointSource {
+  group: THREE.Group;
+  getJointWorld(name: string, out: THREE.Vector3): boolean;
+}
+
+/** 一套影人的操纵杆（细杆 + 顶端小球），每帧从手位（关节+偏移）连到关节世界坐标 */
 class PuppetRods {
   readonly group = new THREE.Group();
-  /** 颈杆中点（「操纵杆」标注的锚点） */
+  /** 首杆中点（「操纵杆」标注的锚点） */
   readonly neckMid = new THREE.Vector3();
 
-  private puppet: Puppet;
+  private actor: JointSource;
   private rods: { mesh: THREE.Mesh; ball: THREE.Mesh; joint: string; off: THREE.Vector3 }[] = [];
   private tmpA = new THREE.Vector3();
   private tmpB = new THREE.Vector3();
   private tmpM = new THREE.Vector3();
   private tmpQ = new THREE.Quaternion();
 
-  constructor(puppet: Puppet) {
-    this.puppet = puppet;
+  constructor(actor: JointSource, defs = ROD_DEFS) {
+    this.actor = actor;
     const mat = new THREE.MeshStandardMaterial({ color: ROD_COLOR, roughness: 0.75 });
-    for (const def of ROD_DEFS) {
+    for (const def of defs) {
       const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 1, 6), mat);
       const ball = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 10), mat);
       this.group.add(mesh, ball);
@@ -92,7 +104,7 @@ class PuppetRods {
   update(): void {
     // 手位 = 关节世界坐标 + 各自偏移（近水平向后指向幕后），杆随关节动——签子掌得平
     for (const rod of this.rods) {
-      if (!this.puppet.getJointWorld(rod.joint, this.tmpB)) continue;
+      if (!this.actor.getJointWorld(rod.joint, this.tmpB)) continue;
       const a = this.tmpA.set(
         this.tmpB.x + rod.off.x,
         this.tmpB.y + rod.off.y,
@@ -103,7 +115,7 @@ class PuppetRods {
       rod.mesh.quaternion.copy(this.tmpQ);
       rod.mesh.scale.set(1, len, 1);
       rod.ball.position.copy(this.tmpB);
-      if (rod.joint === 'head') this.neckMid.copy(this.tmpM);
+      if (rod === this.rods[0]) this.neckMid.copy(this.tmpM);
     }
   }
 }
@@ -112,8 +124,10 @@ export interface BackstageOptions {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   dom: HTMLElement; // 渲染画布（拖拽/滚轮监听挂在它上面）
-  /** 人形影人（主角 + 西游红孩儿）；老虎不加——非人形，无三杆操纵传统 */
+  /** 人形影人（主角 + 西游红孩儿）：三杆制（颈 + 双手） */
   puppets: Puppet[];
+  /** 老虎（水浒）：兽形两杆制（身 + 头）；无老虎场景省略 */
+  tiger?: { group: THREE.Group; getJointWorld(name: string, out: THREE.Vector3): boolean };
   /** 返回 true 时 b 键让位（tuner 拖点标定中） */
   blocked?: () => boolean;
 }
@@ -148,9 +162,14 @@ export class Backstage {
     this.camera = opts.camera;
     this.blocked = opts.blocked;
 
-    // 操纵杆：每套人形影人一组，只挂 layer 0（不进投影）
+    // 操纵杆：人形三杆制、老虎两杆制（身+头），只挂 layer 0（不进投影）
     for (const p of opts.puppets) {
       const r = new PuppetRods(p);
+      this.rods.push(r);
+      this.rodsGroup.add(r.group);
+    }
+    if (opts.tiger) {
+      const r = new PuppetRods(opts.tiger, TIGER_ROD_DEFS);
       this.rods.push(r);
       this.rodsGroup.add(r.group);
     }

@@ -347,13 +347,14 @@ async function main() {
     title: SCENE === 'xiyou' ? '孙悟空大战红孩儿 · 火云洞' : '武松打虎 · 景阳冈',
   });
 
-  // ---------- 幕后模式（b 键）：侧后 45° 环绕机位 + 三杆操纵可视化 + 投影原理标注 ----------
-  // 人形影人才有杆（主角；西游加红孩儿；老虎非人形不加）；tuner 标定中 b 让位
+  // ---------- 幕后模式（b 键）：侧后 45° 环绕机位 + 操纵杆可视化 + 投影原理标注 ----------
+  // 人形三杆（颈+双手；西游加红孩儿），老虎两杆（身+头）；tuner 标定中 b 让位
   const backstage = new Backstage({
     scene,
     camera,
     dom: renderer.domElement,
     puppets: SCENE === 'xiyou' && foe ? [puppet, foe] : [puppet],
+    tiger: tiger ?? undefined,
     blocked: () => tuner?.visible ?? false,
   });
 

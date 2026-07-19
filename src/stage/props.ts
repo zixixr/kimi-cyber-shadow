@@ -29,16 +29,17 @@ export interface PropPlacement {
 export const SHUIHU_PROPS: PropPlacement[] = [
   // 酒旗：抬高悬于角色头顶上方（旗面不占表演区），细旗杆垂下——皮影道具由操偶者举持，不落地
   { name: 'jiuqi', x: -0.25, y: 0.78, z: 0.1, height: 0.85 },
-  // 山石：后景偏灯——影子落在幕右当景阳冈远山（影 ≈ x-0.5，放大 2 倍）
-  { name: 'shanshi', x: -0.25, z: 0.42, height: 0.5 },
+  // 山石：吊景高位——贴地放时影子被灯位投影压到幕下缘外（只见山顶一尖的教训）；
+  // 抬高后影子完整落在幕右上当景阳冈远山（影 ≈ x-0.5、放大 2 倍）
+  { name: 'shanshi', x: -0.25, y: 1.0, z: 0.42, height: 0.4 },
 ];
 
 /** 西游 · 悟空打红孩儿布景：火云洞 + 复用山石侧景 */
 export const XIYOU_PROPS: PropPlacement[] = [
   // 火云洞：中后景偏右（红孩儿一方），深度适中保持洞形可读
   { name: 'huoyun', x: 0.3, z: 0.35, height: 0.9 },
-  // 山石复用：幕左侧景，靠灯拉开前后层次（影 ≈ x+0.66）
-  { name: 'shanshi', x: 0.31, z: 0.45, height: 0.5 },
+  // 山石复用：吊景高位（同水浒的教训：贴地影子落到幕下缘外），幕左侧景
+  { name: 'shanshi', x: 0.31, y: 1.0, z: 0.45, height: 0.38 },
 ];
 
 export class StageProp {

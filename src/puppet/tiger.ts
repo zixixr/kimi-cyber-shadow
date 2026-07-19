@@ -139,6 +139,14 @@ export class Tiger {
     return this.group;
   }
 
+  /** 关节世界坐标（幕后模式操纵杆端点用）；关节不存在返回 false */
+  getJointWorld(name: string, out: THREE.Vector3): boolean {
+    const j = this.joints.get(name);
+    if (!j) return false;
+    j.getWorldPosition(out);
+    return true;
+  }
+
   /**
    * 第二只手接管：传导演的 SecondRoleIntent（active=false 等价 null 回 AI）。
    * 走位=moveX、握拳=扑击、张开=咆哮（边沿触发，对峙状态才响应）。
