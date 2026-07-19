@@ -56,12 +56,13 @@ export function solveRod(
   return len;
 }
 
-// 三杆制（真皮影同制）：颈 1 杆 + 双手各 1 杆。
-// 台下手位 = 影人根位置下方偏外的固定偏移（操偶师傅的手在台面下，杆斜向上够到关节）。
+// 三杆制（真皮影同制）：主杆（领签）接颈后、手签接双手。
+// 真实持法（调研：操纵口诀「签子掌得平」）：杆近水平、垂直幕布指向幕后的操偶师傅，
+// 手与关节基本同高、略低几厘米——不是从台底斜向上够。
 const ROD_DEFS: ReadonlyArray<{ joint: string; off: readonly [number, number, number] }> = [
-  { joint: 'head', off: [0, -0.5, 0.18] }, // 颈杆：根正下略偏后
-  { joint: 'hand_f', off: [0.16, -0.55, 0.24] }, // 前手杆：偏前手侧
-  { joint: 'hand_b', off: [-0.16, -0.55, 0.24] }, // 后手杆：偏后手侧
+  { joint: 'head', off: [0, -0.05, 0.32] }, // 主杆（领签）：颈后水平向后
+  { joint: 'hand_f', off: [0.04, -0.06, 0.3] }, // 手签：前手水平向后
+  { joint: 'hand_b', off: [-0.04, -0.06, 0.3] }, // 手签：后手水平向后
 ];
 
 /** 一套影人的三根操纵杆（细杆 + 顶端小球），每帧从台下手位连到关节世界坐标 */
@@ -89,10 +90,14 @@ class PuppetRods {
   }
 
   update(): void {
-    const root = this.puppet.group.position; // 台下手位随影人根平移（走位时杆跟着走）
+    // 手位 = 关节世界坐标 + 各自偏移（近水平向后指向幕后），杆随关节动——签子掌得平
     for (const rod of this.rods) {
-      const a = this.tmpA.set(root.x + rod.off.x, root.y + rod.off.y, root.z + rod.off.z);
       if (!this.puppet.getJointWorld(rod.joint, this.tmpB)) continue;
+      const a = this.tmpA.set(
+        this.tmpB.x + rod.off.x,
+        this.tmpB.y + rod.off.y,
+        this.tmpB.z + rod.off.z,
+      );
       const len = solveRod(a, this.tmpB, this.tmpM, this.tmpQ);
       rod.mesh.position.copy(this.tmpM);
       rod.mesh.quaternion.copy(this.tmpQ);
