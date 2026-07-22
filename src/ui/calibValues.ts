@@ -30,7 +30,7 @@ export function defaultCalib(): CalibValues {
   return {
     mouth: { x: MOUTH_OFF.x, y: MOUTH_OFF.y },
     grip: GRIP_DIST,
-    headOff: { x: 0, y: 0 },
+    headOff: { x: -0.003295490847335206, y: -0.03255358664527788 }, // 拖点标定固化值（脖颈插领坐进领口；此前只存 localStorage 未固化，导致程序录制脖颈过长）
     armScale: 1,
     legScale: 1,
   };

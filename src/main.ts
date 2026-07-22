@@ -24,6 +24,7 @@ import { Sfx } from './audio/sfx';
 import { Battle, degradeSignals, heroAttack } from './game/battle';
 import { Xiyou, facingDirX, fireOrigin, type XiyouFrame } from './game/xiyou';
 import { Director, type PuppetControl } from './hand/director';
+import { ikDemoTargets } from './hand/ikdemo';
 import { MediaPipeSource } from './hand/mediapipe';
 import { MouseDebugSource, type HandSource } from './hand/source';
 import { FireBreath } from './stage/fire';
@@ -36,11 +37,34 @@ import { Opening } from './ui/opening';
 import { Backstage } from './ui/backstage';
 import { Tuner } from './ui/tuner';
 import { loadCalib } from './ui/calibValues';
+import {
+  CAPTURE,
+  CAP_CAM,
+  CAP_SCRIPT,
+  capClock,
+  captureArmOverride,
+  captureHookCamera,
+  captureOrbitCamera,
+  capturePropsCamera,
+  captureRodsCamera,
+  installCapController,
+  registerLoop,
+  ScriptedSource,
+} from './capture';
 
 const PARAMS = new URLSearchParams(location.search);
 const DEBUG = PARAMS.get('debug');
 /** 场景：shuihu=武松打虎（默认） / xiyou=悟空打红孩儿 */
 const SCENE: 'shuihu' | 'xiyou' = PARAMS.get('scene') === 'xiyou' ? 'xiyou' : 'shuihu';
+/**
+ * IK 直控演示模式（?ikdemo=1，可与 ?scene= 组合）：还原早期失败方案——
+ * 食指=前手 / 拇指=后手 两根签杆直控两只手（IK 目标），关状态机、腿被动摆锤、纯跟手（见 hand/ikdemo.ts）。
+ * 摄像头 / PIP / 关键点可视化照常（要录到「手在动、角色难受」的因果）；与 capture 模式互斥不影响。
+ */
+const IKDEMO = PARAMS.get('ikdemo') === '1' && !CAPTURE;
+
+// 捕获模式（?capture=1）：确定性逐帧录 B-roll——隐藏鼠标指针（其余 UI 各自按 CAPTURE 跳过）
+if (CAPTURE) document.body.style.cursor = 'none';
 
 // ---------- 渲染器 ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -80,6 +104,12 @@ function applyControl(p: Puppet, c: PuppetControl): void {
 
 /** 打开手信号源：?debug=mouse 强制鼠标；否则先试摄像头，失败优雅降级鼠标源 */
 async function openSource(): Promise<HandSource> {
+  if (CAPTURE) {
+    // 捕获模式：脚本化信号源（不请求摄像头，逐帧确定性）
+    const s = new ScriptedSource(CAP_SCRIPT);
+    await s.start();
+    return s;
+  }
   if (DEBUG === 'mouse') {
     const s = new MouseDebugSource();
     await s.start();
@@ -97,6 +127,32 @@ async function openSource(): Promise<HandSource> {
     await s.start();
     return s;
   }
+}
+
+/** IK 直控演示模式的极简说明卡（替换左侧动作对照表，只说签杆映射，不显示其它快捷键） */
+function buildIkDemoCard(): void {
+  const card = document.createElement('div');
+  Object.assign(card.style, {
+    position: 'fixed',
+    left: '16px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: '210px',
+    padding: '14px 16px',
+    zIndex: '10',
+    background: 'rgba(10,8,6,0.82)',
+    border: '1px solid #c8a05a44',
+    borderRadius: '4px',
+    color: '#d9c39a',
+    font: '13px "Songti SC", "Noto Serif SC", serif',
+    lineHeight: '1.7',
+    letterSpacing: '0.06em',
+  } as Partial<CSSStyleDeclaration>);
+  card.innerHTML =
+    '<div style="font-size:14px;color:#c8a05a;letter-spacing:0.2em;margin-bottom:8px">IK 直控模式</div>' +
+    '<div>☝️ 食指 = 前手</div>' +
+    '<div>👍 拇指 = 后手</div>';
+  document.body.appendChild(card);
 }
 
 /** 顶部提示条（摄像头降级等），常驻 */
@@ -166,6 +222,10 @@ async function main() {
   });
 
   if (SCENE === 'xiyou') {
+    // IK 直控演示：不上红孩儿/金箍棒/火尖枪/筋斗云/三昧真火——干净戏台只留可控主角
+    if (IKDEMO) {
+      // 留空：foe/weapons/xiyou 全为 null，主循环 ikdemo 分支只驱动主角双臂
+    } else {
     try {
       foe = await Puppet.load('honghaier');
       scene.add(foe.group);
@@ -196,19 +256,28 @@ async function main() {
       xiyou.reset();
       sfx.play('gong', { volume: 0.8, rate: 1.2 });
     });
-  } else {
-    try {
-      tiger = await Tiger.load();
-      scene.add(tiger.group);
-    } catch (err) {
-      console.warn('[shuihu] 老虎资产加载失败，本局无老虎', err);
-      showToast('老虎资产加载失败，本局无老虎（仅排练）');
     }
-    try {
-      tree = await Tree.load();
-      scene.add(tree.group);
-    } catch (err) {
-      console.warn('[shuihu] 枯树资产加载失败，本局无枯树', err);
+  } else {
+    // 捕获模式 / IK 直控演示：干净戏台——不上老虎/枯树（AI 老虎扑上来、断棒会干扰录制）。
+    // 例外：?cam=orbit 环绕魔法镜头是「二维皮影其实在三维空间演」的核心证据，需完整戏台
+    // （武松 + 老虎都在台上、双方操纵杆都可见），故 orbit 下恢复加载老虎（枯树仍不上，避免棒断/挡镜）。
+    const ORBIT_CAP = CAPTURE && CAP_CAM === 'orbit';
+    if ((!CAPTURE && !IKDEMO) || ORBIT_CAP) {
+      try {
+        tiger = await Tiger.load();
+        scene.add(tiger.group);
+      } catch (err) {
+        console.warn('[shuihu] 老虎资产加载失败，本局无老虎', err);
+        showToast('老虎资产加载失败，本局无老虎（仅排练）');
+      }
+    }
+    if (!CAPTURE && !IKDEMO) {
+      try {
+        tree = await Tree.load();
+        scene.add(tree.group);
+      } catch (err) {
+        console.warn('[shuihu] 枯树资产加载失败，本局无枯树', err);
+      }
     }
     staff = new Staff();
     staff.attach(puppet);
@@ -245,7 +314,9 @@ async function main() {
 
   const source = await openSource();
   const director = new Director(puppet.armReach);
-  const sheet = new CheatSheet(SCENE);
+  // 捕获模式：不出动作对照表（画面只留戏台）；IK 直控演示：换成一张极简说明卡
+  const sheet = CAPTURE || IKDEMO ? null : new CheatSheet(SCENE);
+  if (IKDEMO) buildIkDemoCard();
 
   // 西游每帧复用的临时向量（嘴部/喷口世界坐标）
   const headW = new THREE.Vector3();
@@ -340,12 +411,15 @@ async function main() {
 
   // ---------- 开场报幕：全暗 0.6s → 灯 1.2s 渐亮 → 一声锣 + 字幕牌 2.4s 淡出 ----------
   // 报幕期间主循环走门闩分支（导演/手势挂起）；只建一次——r 重开不重播，c 换幕整页重载天然重播
-  const opening = new Opening({
-    theater,
-    dimUniform: projection.screenMaterial.uniforms.dim as { value: number },
-    sfx,
-    title: SCENE === 'xiyou' ? '孙悟空大战红孩儿 · 火云洞' : '武松打虎 · 景阳冈',
-  });
+  // 捕获模式：跳过开场报幕（不占片头、灯/幕布保持全亮），直接开演
+  const opening = CAPTURE || IKDEMO
+    ? ({ done: true, update() {} } as Pick<Opening, 'done' | 'update'>)
+    : new Opening({
+        theater,
+        dimUniform: projection.screenMaterial.uniforms.dim as { value: number },
+        sfx,
+        title: SCENE === 'xiyou' ? '孙悟空大战红孩儿 · 火云洞' : '武松打虎 · 景阳冈',
+      });
 
   // ---------- 幕后模式（b 键）：侧后 45° 环绕机位 + 操纵杆可视化 + 投影原理标注 ----------
   // 人形三杆（颈+双手；西游加红孩儿），老虎两杆（身+头）；tuner 标定中 b 让位
@@ -365,8 +439,15 @@ async function main() {
     foe.face(-1); // 红孩儿在左、面向悟空
   }
 
-  const clock = new THREE.Clock();
-  renderer.setAnimationLoop(() => {
+  // 捕获模式 ?cam=back：瞬时切到幕后侧后 45° 机位（保留中文标注、隐藏操作提示）
+  if (CAPTURE && CAP_CAM === 'back') backstage.enterCaptureBack();
+  // 捕获模式 ?cam=rods / ?cam=orbit / ?cam=hook：显操纵杆本体（人形颈+双手 / 老虎身+头）、隐一切标注；
+  // rods 相机由 captureRodsCamera 每帧驱动，orbit 由 captureOrbitCamera、hook 由 captureHookCamera 驱动。
+  if (CAPTURE && (CAP_CAM === 'rods' || CAP_CAM === 'orbit' || CAP_CAM === 'hook')) backstage.enterCaptureRodsClean();
+
+  // 捕获模式用确定性时钟（step() 手动推进 CAP_DT）；否则真实 THREE.Clock（墙钟）
+  const clock = CAPTURE ? capClock : new THREE.Clock();
+  const loop = () => {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
 
@@ -381,6 +462,28 @@ async function main() {
       puppet.update(dt);
       foe?.update(dt);
       backstage.update(dt);
+      const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
+      projection.update(renderer, scene, depthRatio, projectionHooks);
+      renderer.render(scene, camera);
+      return;
+    }
+
+    // ---------- IK 直控演示（?ikdemo=1）：食指=前手 / 拇指=后手，两个 IK 目标各控一臂 ----------
+    // 关状态机（不跑 director/玩法/连招/器械/走跑跳转身），站定居中、腿被动摆锤、纯 IK 跟手。
+    // 摄像头 PIP + 关键点可视化由 MediaPipeSource 自带，照常显示；早退避开下方所有玩法分支。
+    if (IKDEMO) {
+      const sigs = source.read();
+      const main = sigs.find((x) => x.present) ?? null; // 观众视角第 1 只手 = 主手
+      puppet.setPosition(0.2, 0.95); // 0.95 = BASE_Y（director 内部常量，与候场位一致）
+      puppet.setDepth(0.15);
+      puppet.face(1);
+      puppet.setLean(0);
+      puppet.setLegPose(null, null); // 腿恢复被动摆锤（自然垂摆，不触发走/踢/弓步）
+      const tg = ikDemoTargets(main, 1);
+      puppet.pointAt(tg.front, 'front'); // 食指指尖 → 前手 IK 目标
+      puppet.pointAt(tg.back, 'back'); // 拇指指尖 → 后手 IK 目标
+      puppet.update(dt);
+      backstage.update(dt); // b 幕后模式仍可用（看签杆/光路），前台态无副作用
       const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
       projection.update(renderer, scene, depthRatio, projectionHooks);
       renderer.render(scene, camera);
@@ -437,6 +540,14 @@ async function main() {
     // 西游玩法：第二角色路由/AI、命中判定、演出覆盖层（原地改写 frame.hero）
     const xf: XiyouFrame | null = xiyou && foe ? xiyou.update(dt, t, frame.hero, frame.second) : null;
     applyControl(puppet, frame.hero);
+    // 捕获模式双臂 IK 直驱（ik_simple 等）：绕过 director，两个 IK 目标各控一只手（小范围演示）
+    if (CAPTURE) {
+      const ov = captureArmOverride(t);
+      if (ov) {
+        puppet.pointAt(ov.front, 'front');
+        puppet.pointAt(ov.back, 'back');
+      }
+    }
     puppet.update(dt);
 
     // ---------- 西游玩法：金箍棒 / 双手握棒 / 火尖枪 / 筋斗云 / 三昧真火 ----------
@@ -503,7 +614,7 @@ async function main() {
       }
     }
 
-    sheet.update({
+    sheet?.update({
       gesture: signals.length > 0 ? frame.hero.gesture : null,
       state: frame.hero.state,
       hands: signals.length,
@@ -516,11 +627,29 @@ async function main() {
     });
 
     backstage.update(dt); // 幕后模式：机位环绕/操纵杆/标注逐帧跟随（前台态无副作用）
+    // 捕获 ?cam=orbit：相机沿 f(t) 连续环绕（正面→侧后），backstage 已 enterCaptureRodsClean
+    //   显双角色操纵杆（无标注）、每帧刷杆；相机由本函数外部驱动
+    if (CAPTURE && CAP_CAM === 'orbit') captureOrbitCamera(t, camera);
+    // 捕获 ?cam=rods：操纵杆特写侧视缓推（backstage 已 enterCaptureRodsClean 显杆、刷杆）
+    else if (CAPTURE && CAP_CAM === 'rods') captureRodsCamera(t, camera);
+    // 捕获 ?cam=props：置景扫过（幕后 3/4 侧视横移缓推），backstage 保持 front 故纯净无杆无标注
+    else if (CAPTURE && CAP_CAM === 'props') capturePropsCamera(t, camera);
+    // 捕获 ?cam=hook：片头「幕后 3D 奇观」低机位侧后缓推（backstage 已 enterCaptureRodsClean 显双角色签杆）
+    else if (CAPTURE && CAP_CAM === 'hook') captureHookCamera(t, camera);
 
     const depthRatio = THREE.MathUtils.clamp(puppet.group.position.z / LAMP_POS.z, 0, 1);
     projection.update(renderer, scene, depthRatio, projectionHooks);
     renderer.render(scene, camera);
-  });
+  };
+
+  if (CAPTURE) {
+    // 逐帧确定性：不用 rAF；window.__cap.step() 每次推进一帧并渲染
+    const cap = installCapController();
+    registerLoop(loop);
+    cap.ready = true;
+  } else {
+    renderer.setAnimationLoop(loop);
+  }
 }
 
 main().catch((err) => {

@@ -150,6 +150,8 @@ export class Backstage {
 
   private rods: PuppetRods[] = [];
   private rodsGroup = new THREE.Group();
+  /** ?cam=rods：只显操纵杆、每帧刷新，相机由 captureRodsCamera 外部驱动（无标注/无操作条） */
+  private captureRodsOnly = false;
   private labels: { el: HTMLDivElement; anchor: (out: THREE.Vector3) => void }[] = [];
   private bar: HTMLDivElement;
   private tmpP = new THREE.Vector3();
@@ -264,6 +266,36 @@ export class Backstage {
     return this.phase !== 'front';
   }
 
+  /**
+   * 捕获模式：瞬时进入幕后态（无 1s 过渡，供逐帧确定性录制），保留灯/幕布/影人/操纵杆
+   * 中文标注，隐藏「拖拽环绕 · 滚轮缩放 · 按 b 回前台」等操作提示。相机每帧由 update() 定位。
+   */
+  enterCaptureBack(): void {
+    this.phase = 'back';
+    this.k = 1;
+    this.setUiVisible(true);
+    // 只留投影原理解说，去掉操作提示行
+    this.bar.innerHTML =
+      '光沿直线传播 → 皮偶挡住光 → 幕布上留下彩色透光影；近灯影大而虚，贴幕影小而锐';
+    orbitPos(this.theta, this.phi, this.radius, ORBIT_TARGET, this.camera.position);
+    this.camera.lookAt(ORBIT_TARGET);
+    for (const r of this.rods) r.update();
+    this.updateLabels();
+  }
+
+  /**
+   * 捕获模式 ?cam=rods：只显操纵杆本体、每帧刷新，隐藏一切中文标注 / 引线 / 操作条。
+   * 相机由 captureRodsCamera(t) 在主循环外部逐帧驱动（本类不碰相机）。phase 仍留 front，
+   * update() 走 captureRodsOnly 分支只刷新签杆。
+   */
+  enterCaptureRodsClean(): void {
+    this.captureRodsOnly = true;
+    this.rodsGroup.visible = true;
+    this.bar.style.display = 'none';
+    for (const l of this.labels) l.el.style.display = 'none';
+    for (const r of this.rods) r.update();
+  }
+
   private toggle(): void {
     if (this.phase === 'front') {
       this.phase = 'enter';
@@ -288,6 +320,11 @@ export class Backstage {
 
   /** 每帧驱动机位过渡/环绕、操纵杆与标注（仅幕后态有实际效果） */
   update(dt: number): void {
+    // ?cam=rods：只逐帧刷新操纵杆（相机外部驱动、无标注）
+    if (this.captureRodsOnly) {
+      for (const r of this.rods) r.update();
+      return;
+    }
     if (this.phase === 'front') return;
 
     if (this.phase === 'enter' || this.phase === 'exit') {

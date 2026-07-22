@@ -110,7 +110,7 @@
     "layer": 5,
     "rest": 0,
     "art": "hand_b",
-    "flipX": false
+    "flipX": true
   },
   "upper_arm_b": {
     "parent": "chest",
@@ -163,7 +163,7 @@
     ],
     "layer": -3,
     "rest": 0,
-    "flipX": true
+    "flipX": false
   },
   "leg_f": {
     "parent": "belly",

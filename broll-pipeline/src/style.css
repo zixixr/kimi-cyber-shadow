@@ -1,0 +1,151 @@
+:root {
+  --amber: #f0b866;
+  --amber-bright: #ffd68a;
+  --red: #cf3b2c;
+  --ink: #08070a;
+  --paper: #e9c98f;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #050406;
+}
+
+#stage {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  /* 深黑但不死黑：中心暖光晕 + 底部微红，保留暗部层次 */
+  background:
+    radial-gradient(120% 90% at 50% 42%, #1c1512 0%, #120d10 38%, #0a0709 68%, #050406 100%);
+}
+
+/* 车间"生产线"横向纹理：极淡的暖色扫描格 */
+#stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg, rgba(240, 184, 102, 0.028) 0 2px, transparent 2px 5px);
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+#gl, #c2d {
+  position: absolute;
+  inset: 0;
+  width: 1920px;
+  height: 1080px;
+}
+#c2d { z-index: 2; }
+#gl { z-index: 1; }
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  color: var(--paper);
+}
+
+/* 顶部：工序编号徽章 + 标题 */
+#frame-top {
+  position: absolute;
+  top: 66px;
+  left: 96px;
+  display: flex;
+  align-items: baseline;
+  gap: 34px;
+}
+#station {
+  font-size: 30px;
+  letter-spacing: 4px;
+  color: var(--amber);
+  font-weight: 600;
+  border: 1.5px solid rgba(240, 184, 102, 0.45);
+  border-radius: 3px;
+  padding: 7px 18px 8px;
+  background: rgba(240, 184, 102, 0.06);
+}
+#station #station-no { color: var(--amber-bright); font-size: 34px; }
+#station .slash { color: rgba(240, 184, 102, 0.5); margin: 0 4px; }
+#title {
+  font-size: 52px;
+  font-weight: 700;
+  color: var(--paper);
+  letter-spacing: 3px;
+  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.8);
+}
+#title::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 20px;
+  background: var(--red);
+  transform: rotate(45deg) translateY(-6px);
+  box-shadow: 0 0 18px rgba(207, 59, 44, 0.8);
+}
+
+/* 底部左：说明文案 */
+#caption {
+  position: absolute;
+  left: 96px;
+  bottom: 92px;
+  font-size: 34px;
+  line-height: 1.5;
+  color: rgba(233, 201, 143, 0.92);
+  letter-spacing: 1.5px;
+  max-width: 1100px;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85);
+}
+#caption .mono {
+  color: var(--amber-bright);
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 30px;
+}
+
+/* 底部右：实时数据/计数 */
+#stat {
+  position: absolute;
+  right: 96px;
+  bottom: 92px;
+  text-align: right;
+  font-size: 30px;
+  color: var(--amber);
+  letter-spacing: 2px;
+  font-family: "SF Mono", "Menlo", monospace;
+}
+#stat .big { font-size: 74px; color: var(--amber-bright); font-weight: 700; line-height: 1; }
+#stat .unit { font-size: 30px; color: rgba(240, 184, 102, 0.7); }
+
+/* 品牌角标 */
+#brand {
+  position: absolute;
+  top: 74px;
+  right: 96px;
+  font-size: 26px;
+  letter-spacing: 6px;
+  color: rgba(240, 184, 102, 0.55);
+}
+
+/* 四角装饰刻线（车间取景框） */
+#stage::after {
+  content: "";
+  position: absolute;
+  inset: 48px;
+  border: 1px solid rgba(240, 184, 102, 0.14);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* ?clean=1：隐藏一切页面 chrome（工序头 / 说明 / 计数器 / 品牌 / 取景框），
+   只留内容主体（皮件 / 扫描 / 描边 / 挤出 / 铆点 / 装配动画本体，各 clip 内容居中放大）。
+   统一「工序 0N · 名称」标注交给 Remotion 包装层。 */
+body.clean #overlay { display: none; }
+body.clean #stage::after { display: none; }
